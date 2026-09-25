@@ -1,16 +1,27 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ViewStyle,
+  Platform,
+  StatusBar as RNStatusBar,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../constants/theme';
 
-interface HeaderProps {
-  title: string;
+export interface HeaderProps {
+  title?: string;
   subtitle?: string;
   showBack?: boolean;
   onBackPress?: () => void;
   rightAction?: React.ReactNode;
+  titleComponent?: React.ReactNode;
   style?: ViewStyle;
+  safeAreaTop?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,8 +30,12 @@ export const Header: React.FC<HeaderProps> = ({
   showBack = true,
   onBackPress,
   rightAction,
+  titleComponent,
   style,
+  safeAreaTop = false,
 }) => {
+  const insets = useSafeAreaInsets();
+
   const handleBack = () => {
     if (onBackPress) {
       onBackPress();
@@ -29,8 +44,18 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const topPadding = safeAreaTop
+    ? Math.max(insets.top, Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0)
+    : 0;
+
   return (
-    <View style={[styles.container, style]}>
+    <View
+      style={[
+        styles.container,
+        topPadding > 0 && { paddingTop: topPadding + spacing.xs },
+        style,
+      ]}
+    >
       <View style={styles.leftContainer}>
         {showBack && (
           <TouchableOpacity
@@ -39,19 +64,25 @@ export const Header: React.FC<HeaderProps> = ({
             activeOpacity={0.7}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
+            <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
         )}
-        <View style={styles.titleContainer}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
-          </Text>
-          {subtitle && (
-            <Text style={styles.subtitle} numberOfLines={1}>
-              {subtitle}
-            </Text>
-          )}
-        </View>
+        {titleComponent ? (
+          <View style={styles.titleComponentWrapper}>{titleComponent}</View>
+        ) : (
+          <View style={styles.titleContainer}>
+            {title && (
+              <Text style={styles.title} numberOfLines={1}>
+                {title}
+              </Text>
+            )}
+            {subtitle && (
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            )}
+          </View>
+        )}
       </View>
 
       {rightAction && <View style={styles.rightContainer}>{rightAction}</View>}
@@ -65,10 +96,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
+    paddingVertical: 12,
+    minHeight: 56,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    borderBottomColor: colors.borderLight || '#F1F5F9',
   },
   leftContainer: {
     flexDirection: 'row',
@@ -76,29 +108,41 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   backButton: {
-    marginRight: spacing.sm,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    marginRight: spacing.sm + 2,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.cardMuted,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   titleContainer: {
     flex: 1,
+    justifyContent: 'center',
+  },
+  titleComponentWrapper: {
+    flex: 1,
+    justifyContent: 'center',
   },
   title: {
-    fontSize: typography.fontSizes.lg,
+    fontSize: 18,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: typography.fontSizes.xs,
     color: colors.textSecondary,
-    marginTop: 1,
+    marginTop: 2,
+    fontWeight: typography.fontWeights.medium,
   },
   rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    minWidth: 38,
+    marginLeft: spacing.sm,
   },
 });

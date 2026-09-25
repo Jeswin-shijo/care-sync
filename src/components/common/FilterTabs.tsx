@@ -44,6 +44,7 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
             onPress={() => onSelectTab(tab)}
             style={[
               styles.tab,
+              !scrollable && styles.fixedTab,
               tabStyle,
               isActive && [styles.activeTab, activeTabStyle],
             ]}
@@ -118,6 +119,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     gap: spacing.sm,
     alignItems: 'center',
+  },
+  fixedTab: {
+    flex: 1,
+    paddingHorizontal: 6,
   },
   tab: {
     height: 38,

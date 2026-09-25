@@ -2,7 +2,7 @@ import React from 'react';
 import { LogBox } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AppProvider } from '../context/AppContext';
 import { AlertProvider } from '../context/AlertContext';
 
@@ -12,7 +12,7 @@ LogBox.ignoreLogs([
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AlertProvider>
         <AppProvider>
           <StatusBar style="dark" />

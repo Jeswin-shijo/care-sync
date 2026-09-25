@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogBox } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider } from './src/context/AppContext';
@@ -13,7 +13,7 @@ LogBox.ignoreLogs([
 
 export default function App() {
   return (
-    <SafeAreaProvider>
+    <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AlertProvider>
         <AppProvider>
           <NavigationContainer>

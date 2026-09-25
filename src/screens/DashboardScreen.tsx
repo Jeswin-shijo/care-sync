@@ -15,6 +15,7 @@ import { RootStackParamList } from '../navigation/types';
 import { useApp } from '../context/AppContext';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 import { HOSPITAL_CONFIG } from '../constants/config';
+import { Header } from '../components/common/Header';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
 import { formatCurrency } from '../utils/formatters';
@@ -97,21 +98,19 @@ export const DashboardScreen: React.FC = () => {
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Top Header */}
-        <View style={styles.header}>
+      <Header
+        showBack={false}
+        titleComponent={
           <View style={styles.profileRow}>
-            <Avatar name={HOSPITAL_CONFIG.doctorName} size={46} showStatus />
+            <Avatar name={HOSPITAL_CONFIG.doctorName} size={42} showStatus />
             <View style={styles.profileTextContainer}>
               <Text style={styles.greetingText}>Good Morning,</Text>
               <Text style={styles.doctorNameText}>{HOSPITAL_CONFIG.doctorName}</Text>
               <Text style={styles.doctorRoleText}>{HOSPITAL_CONFIG.doctorRole}</Text>
             </View>
           </View>
-
+        }
+        rightAction={
           <TouchableOpacity
             style={styles.notificationBtn}
             onPress={() => navigation.navigate('Notifications')}
@@ -120,7 +119,13 @@ export const DashboardScreen: React.FC = () => {
             <Ionicons name="notifications-outline" size={22} color={colors.text} />
             {unreadCount > 0 && <View style={styles.notifBadge} />}
           </TouchableOpacity>
-        </View>
+        }
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
 
         {/* Hospital Glance Banner Card */}
         <TouchableOpacity
