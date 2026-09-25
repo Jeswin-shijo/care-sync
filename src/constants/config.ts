@@ -1,0 +1,16 @@
+export const HOSPITAL_CONFIG = {
+  name: 'City Care Multispecialty Hospital',
+  tagline: 'Your Hospital at a Glance',
+  motto: 'Better Care. Smarter Tomorrow.',
+  address: 'NH 47, Kakkanad, Kochi - 682030',
+  phone: '+91 484 234 5678',
+  email: 'care@citycarehospital.com',
+  website: 'www.citycarehospital.com',
+  gstin: '32ABCDE1234F1Z5',
+  regNo: 'HOSP-KL-2023-88912',
+  currency: '₹',
+  doctorName: 'Dr. Priya Menon',
+  doctorRole: 'Chief Medical Officer',
+  doctorSpecialty: 'General Medicine',
+  doctorRoom: 'Room 201 • 10:00 AM - 2:00 PM',
+};
