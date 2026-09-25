@@ -1,14 +1,21 @@
 import React from 'react';
+import { LogBox } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../context/AppContext';
+import { AlertProvider } from '../context/AlertContext';
+
+LogBox.ignoreLogs([
+  'SafeAreaView has been deprecated',
+]);
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-      <StatusBar style="dark" />
+      <AlertProvider>
+        <AppProvider>
+          <StatusBar style="dark" />
       <Stack
         screenOptions={{
           headerShown: false,
@@ -34,7 +41,8 @@ export default function RootLayout() {
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
       </Stack>
-    </AppProvider>
+        </AppProvider>
+      </AlertProvider>
     </SafeAreaProvider>
   );
 }

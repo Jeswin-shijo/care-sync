@@ -1,19 +1,27 @@
 import React from 'react';
+import { LogBox } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { AppProvider } from './src/context/AppContext';
+import { AlertProvider } from './src/context/AlertContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
+
+LogBox.ignoreLogs([
+  'SafeAreaView has been deprecated',
+]);
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          <AppNavigator />
-        </NavigationContainer>
-      </AppProvider>
+      <AlertProvider>
+        <AppProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <AppNavigator />
+          </NavigationContainer>
+        </AppProvider>
+      </AlertProvider>
     </SafeAreaProvider>
   );
 }

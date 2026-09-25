@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ import { Button } from '../components/common/Button';
 import { EmptyState } from '../components/common/EmptyState';
 
 export default function PharmacyRoute() {
-  const { medicines, cart, addToCart, removeFromCart, clearCart, createInvoice, selectedPatient, patients } = useApp();
+  const { medicines, cart, addToCart, decrementCartItem, removeFromCart, clearCart, createInvoice, selectedPatient, patients } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('All');
@@ -82,7 +82,7 @@ export default function PharmacyRoute() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <Header
         title="Pharmacy"
         showBack
@@ -154,7 +154,7 @@ export default function PharmacyRoute() {
                 {inCart ? (
                   <View style={styles.qtyControl}>
                     <TouchableOpacity
-                      onPress={() => removeFromCart(med.id)}
+                      onPress={() => decrementCartItem(med.id)}
                       style={styles.qtyBtn}
                     >
                       <Ionicons name="remove" size={16} color={colors.primary} />

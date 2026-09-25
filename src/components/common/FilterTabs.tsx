@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  View,
   ScrollView,
   TouchableOpacity,
   Text,
@@ -7,7 +8,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { colors, radius, spacing, typography } from '../../constants/theme';
+import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
 
 interface FilterTabsProps {
   tabs: string[];
@@ -39,7 +40,7 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
         return (
           <TouchableOpacity
             key={tab}
-            activeOpacity={0.8}
+            activeOpacity={0.75}
             onPress={() => onSelectTab(tab)}
             style={[
               styles.tab,
@@ -62,45 +63,81 @@ export const FilterTabs: React.FC<FilterTabsProps> = ({
     </>
   );
 
+  const containerStyle = StyleSheet.flatten([
+    styles.wrapper,
+    style,
+    // Ensure generous bottom space is maintained even if parent sets small marginVertical
+    {
+      marginBottom: Math.max(
+        spacing.md,
+        ((style as any)?.marginBottom ?? (style as any)?.marginVertical ?? spacing.md)
+      ),
+    },
+  ]);
+
   if (scrollable) {
     return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.scrollContent, style]}
-      >
-        {content}
-      </ScrollView>
+      <View style={containerStyle}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          style={styles.scroll}
+        >
+          {content}
+        </ScrollView>
+      </View>
     );
   }
 
-  return <ScrollView horizontal={false} style={[styles.fixedContainer, style]}>{content}</ScrollView>;
+  return (
+    <View style={[containerStyle, styles.fixedContainer]}>
+      {content}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
+  wrapper: {
+    flexGrow: 0,
+    flexShrink: 0,
+    marginBottom: spacing.md,
+  },
+  scroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   scrollContent: {
     paddingHorizontal: spacing.base,
     gap: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 2,
+    alignItems: 'center',
   },
   fixedContainer: {
     flexDirection: 'row',
     paddingHorizontal: spacing.base,
     gap: spacing.sm,
+    alignItems: 'center',
   },
   tab: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    height: 38,
+    paddingHorizontal: 18,
     borderRadius: radius.full,
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
     justifyContent: 'center',
+    ...shadows.sm,
   },
   activeTab: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
   },
   tabText: {
     fontSize: typography.fontSizes.sm,
@@ -109,6 +146,6 @@ const styles = StyleSheet.create({
   },
   activeTabText: {
     color: '#FFFFFF',
-    fontWeight: typography.fontWeights.bold,
+    fontWeight: typography.fontWeights.semiBold,
   },
 });

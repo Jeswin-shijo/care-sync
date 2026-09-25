@@ -86,8 +86,9 @@ interface AppContextType {
   admitPatientToIPD: (patientId: string, roomType: string, department: string, notes?: string) => void;
   dischargePatient: (patientId: string) => void;
   addToCart: (item: { id: string; type: CartItem['type']; name: string; price: number }) => void;
-  removeFromCart: (itemId: string) => void;
-  clearCart: () => void;
+  removeFromCart: (itemId: string, removeAll?: boolean) => void;
+  decrementCartItem: (itemId: string) => void;
+  clearCart: (restoreStock?: boolean) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
   sendAiMessage: (messageText: string) => void;
@@ -292,6 +293,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addToCart = (item: { id: string; type: CartItem['type']; name: string; price: number }) => {
+    if (item.type === 'medicine') {
+      const med = medicines.find((m) => m.id === item.id);
+      if (med && med.stock <= 0) {
+        return;
+      }
+    }
+
     setCart((prev) => {
       const existing = prev.find((ci) => ci.id === item.id);
       if (existing) {
@@ -307,11 +315,52 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const removeFromCart = (itemId: string) => {
+  const decrementCartItem = (itemId: string) => {
+    const item = cart.find((ci) => ci.id === itemId);
+    if (!item) return;
+
+    if (item.type === 'medicine') {
+      setMedicines((prev) =>
+        prev.map((m) => (m.id === itemId ? { ...m, stock: m.stock + 1 } : m))
+      );
+    }
+
+    if (item.qty > 1) {
+      setCart((prev) =>
+        prev.map((ci) => (ci.id === itemId ? { ...ci, qty: ci.qty - 1 } : ci))
+      );
+    } else {
+      setCart((prev) => prev.filter((ci) => ci.id !== itemId));
+    }
+  };
+
+  const removeFromCart = (itemId: string, removeAll: boolean = false) => {
+    const item = cart.find((ci) => ci.id === itemId);
+    if (!item) return;
+
+    if (!removeAll && item.qty > 1) {
+      decrementCartItem(itemId);
+      return;
+    }
+
+    if (item.type === 'medicine') {
+      setMedicines((prev) =>
+        prev.map((m) => (m.id === itemId ? { ...m, stock: m.stock + item.qty } : m))
+      );
+    }
     setCart((prev) => prev.filter((ci) => ci.id !== itemId));
   };
 
-  const clearCart = () => {
+  const clearCart = (restoreStock: boolean = false) => {
+    if (restoreStock) {
+      cart.forEach((item) => {
+        if (item.type === 'medicine') {
+          setMedicines((prev) =>
+            prev.map((m) => (m.id === item.id ? { ...m, stock: m.stock + item.qty } : m))
+          );
+        }
+      });
+    }
     setCart([]);
   };
 
@@ -441,6 +490,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         admitPatientToIPD,
         dischargePatient,
         addToCart,
+        decrementCartItem,
         removeFromCart,
         clearCart,
         markNotificationAsRead,

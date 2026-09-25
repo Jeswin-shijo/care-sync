@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   filterTabs: {
-    marginVertical: spacing.xs,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
   listContent: {
     paddingHorizontal: spacing.base,
