@@ -24,6 +24,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -42,7 +44,8 @@
     "build:ios": "npx expo run:ios --configuration Release",
     "dev:ios:d": "npx expo run:ios --device",
     "build:ios:d": "npx expo run:ios --configuration Release --device",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "lint": "expo lint"
   },
   "private": true
 }

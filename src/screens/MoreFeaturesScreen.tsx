@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 import { Header } from '../components/common/Header';
+import { RoleSwitcher } from '../components/common/RoleSwitcher';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -21,6 +22,46 @@ export const MoreFeaturesScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
 
   const modules = [
+    {
+      id: 'doctor-copilot',
+      title: 'Doctor Copilot',
+      icon: 'sparkles' as const,
+      color: '#1E6BFF',
+      bg: '#EFF6FF',
+      onPress: () => navigation.navigate('DoctorCopilot'),
+    },
+    {
+      id: 'nurse-portal',
+      title: 'Nurse Ward',
+      icon: 'fitness' as const,
+      color: '#059669',
+      bg: '#ECFDF5',
+      onPress: () => navigation.navigate('NursePortal'),
+    },
+    {
+      id: 'pharmacy-review',
+      title: 'Drug Safety Review',
+      icon: 'shield-checkmark' as const,
+      color: '#D97706',
+      bg: '#FFFBEB',
+      onPress: () => navigation.navigate('PharmacyReview'),
+    },
+    {
+      id: 'lab-portal',
+      title: 'Lab Sample Portal',
+      icon: 'flask' as const,
+      color: '#7C3AED',
+      bg: '#F5F3FF',
+      onPress: () => navigation.navigate('LabPortal'),
+    },
+    {
+      id: 'patient-portal',
+      title: 'Patient App',
+      icon: 'person' as const,
+      color: '#EC4899',
+      bg: '#FDF2F8',
+      onPress: () => navigation.navigate('PatientPortal'),
+    },
     {
       id: 'pharmacy',
       title: 'Pharmacy',
@@ -147,6 +188,8 @@ export const MoreFeaturesScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
+        <RoleSwitcher />
+
         <Text style={styles.headerSubtitle}>
           Access all hospital operations, clinical modules, and administrative workflows.
         </Text>

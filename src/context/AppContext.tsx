@@ -1,70 +1,92 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
-import {
-  Patient,
-  Doctor,
+import React, { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import type {
+  Ambulance,
   Appointment,
+  BloodRequest,
+  ClinicalNote,
+  ClinicalProfile,
+  DischargeSummary,
   Invoice,
-  Medicine,
-  LabTest,
-  RadiologyScan,
-  AppNotification,
-  INITIAL_PATIENTS,
-  INITIAL_DOCTORS,
-  INITIAL_APPOINTMENTS,
-  INITIAL_INVOICES,
-  INITIAL_MEDICINES,
-  INITIAL_LAB_TESTS,
-  INITIAL_RADIOLOGY_SCANS,
-  INITIAL_NOTIFICATIONS,
+  LabParameter,
+  LabSample,
+  Patient,
+  PatientDocument,
+  PrescriptionReviewItem,
+  RadiologyOrder,
+  RevenuePeriod,
+  RevenueSnapshot,
+  Visit,
+  VitalsRecord,
 } from '../data/mockData';
-import { generateUHID, generateReceiptNo } from '../utils/formatters';
+import { REVENUE_BY_PERIOD } from '../data/mockData';
+import * as H from '../logic/hospital';
+import { answerPatientQuery, answerStaffQuery, AiAnswer } from '../logic/aiEngine';
+import { AiAlert, buildAiAlerts, labTrends, LabTrend, resultsForPatient } from '../logic/clinical';
+import { revenueForPeriod } from '../logic/billing';
+import type { SafetyAlert } from '../logic/safety';
+import { formatClock } from '../utils/dates';
+import { ROLE_LABEL } from '../logic/access';
+import { useToast } from './ToastContext';
 
-export interface CartItem {
-  id: string;
-  type: 'medicine' | 'lab' | 'radiology' | 'consultation';
-  name: string;
-  price: number;
-  qty: number;
-}
+export type { CartItem, AiChatMessage, UserRole, PaymentMode, RoomType } from '../logic/hospital';
+type CartItem = H.CartItem;
+type UserRole = H.UserRole;
 
-export interface AiChatMessage {
-  id: string;
-  sender: 'user' | 'assistant';
-  text: string;
-  timestamp: string;
-  actionCard?: {
-    type: 'appointment' | 'invoice' | 'patient' | 'report';
-    title: string;
-    description: string;
-    actionLabel?: string;
-    route?: string;
-    params?: any;
-  };
-}
-
-interface AppContextType {
-  patients: Patient[];
-  doctors: Doctor[];
-  appointments: Appointment[];
-  invoices: Invoice[];
-  medicines: Medicine[];
-  labTests: LabTest[];
-  radiologyScans: RadiologyScan[];
-  notifications: AppNotification[];
+/**
+ * Central hospital store.
+ *
+ * All business rules live in pure functions under src/logic (tested by
+ * scripts/testing-agent.js). This provider runs each one as a synchronous
+ * transaction against the latest state, so chained actions (register → bill →
+ * notify) never read stale data.
+ */
+interface AppContextType extends Omit<H.HospitalState, 'selectedPatientId'> {
+  selectedPatientId: string | null;
   selectedPatient: Patient | null;
-  cart: CartItem[];
-  aiChatMessages: AiChatMessage[];
-  todayStats: {
-    totalPatients: number;
-    opdToday: number;
-    ipdOccupancy: number;
-    surgeriesToday: number;
-    todayCollection: number;
-  };
+  patientAppUser: Patient | undefined;
+  todayStats: ReturnType<typeof H.todayStatsFor>;
+  bedSummary: ReturnType<typeof H.bedSummary>;
+  labPipeline: ReturnType<typeof H.labPipelineCounts>;
+  aiAlerts: AiAlert[];
+  upcomingAppointments: Appointment[];
+  unreadCount: number;
+  aiTyping: boolean;
+  patientAiTyping: boolean;
 
-  // Actions
+  // Record lookups (never fall back to another patient)
+  getPatient: (id?: string | null) => Patient | undefined;
+  getProfile: (patientId: string) => ClinicalProfile | undefined;
+  getVitals: (patientId: string) => VitalsRecord[];
+  getLatestVitals: (patientId: string) => VitalsRecord | undefined;
+  getVisits: (patientId: string) => Visit[];
+  getLabResults: (patientId: string) => LabSample[];
+  getLabOrders: (patientId: string) => LabSample[];
+  getLabTrends: (patientId: string) => LabTrend[];
+  getRadiologyOrders: (patientId: string) => RadiologyOrder[];
+  getInvoicesForPatient: (patientId: string) => Invoice[];
+  getAppointmentsForPatient: (patientId: string) => Appointment[];
+  getDocuments: (patientId: string) => PatientDocument[];
+  getClinicalNotes: (patientId: string) => ClinicalNote[];
+  getDischargeSummary: (patientId: string) => DischargeSummary | null;
+  getRevenue: (period: RevenuePeriod) => RevenueSnapshot;
+  getCopilotStats: (doctorName: string) => ReturnType<typeof H.copilotStats>;
+  getAvailableSlots: (doctorId: string, dateISO: string) => H.SlotInfo[];
+  checkDrugsForPatient: (patientId: string, drugs: string[]) => SafetyAlert[];
+  findDuplicatePatients: (phone: string, name?: string) => Patient[];
+  askCopilot: (query: string, patientId?: string) => AiAnswer;
+
+  // Session
+  setActiveRole: (role: UserRole) => void;
   setSelectedPatient: (patient: Patient | null) => void;
+  setSelectedPatientId: (id: string | null) => void;
+  setPatientAppUser: (patientId: string) => void;
+
+  // Patients & appointments
+  registerPatient: (input: H.RegisterPatientInput) => { patient: Patient; invoice: Invoice };
+  /** @deprecated use registerPatient */
   addPatient: (patientData: Omit<Patient, 'id' | 'uhid' | 'registeredDate'>) => Patient;
+  scheduleAppointment: (input: H.ScheduleInput) => H.ScheduleResult;
+  /** @deprecated use scheduleAppointment */
   bookAppointment: (data: {
     patientId: string;
     doctorId: string;
@@ -74,433 +96,349 @@ interface AppContextType {
     time: string;
   }) => Appointment;
   updateAppointmentStatus: (appointmentId: string, status: Appointment['status']) => void;
-  createInvoice: (invoiceData: {
-    type: Invoice['type'];
-    patientId: string;
-    amount: number;
-    paymentMode: Invoice['paymentMode'];
-    title: string;
-    items: Array<{ description: string; qty?: number; rate?: number; amount: number }>;
-    doctorName?: string;
-  }) => Invoice;
+
+  // Clinical
+  saveConsultation: (input: H.ConsultationInput) => ReturnType<typeof H.saveConsultation>['result'];
+  recordVitals: (patientId: string, input: H.VitalsInput, recordedBy?: string) => ReturnType<typeof H.recordVitals>['result'];
+  saveClinicalNote: (patientId: string, content: string, source: ClinicalNote['source'], approvedBy: string) => ClinicalNote;
+  admitPatient: (input: H.AdmitInput) => H.AdmitResult;
+  /** @deprecated use admitPatient */
   admitPatientToIPD: (patientId: string, roomType: string, department: string, notes?: string) => void;
-  dischargePatient: (patientId: string) => void;
-  addToCart: (item: { id: string; type: CartItem['type']; name: string; price: number }) => void;
+  dischargePatient: (patientId: string) => H.DischargeResult;
+
+  // Billing
+  createInvoice: (invoiceData: H.CreateInvoiceInput) => Invoice;
+  markInvoicePaid: (invoiceId: string, mode: H.PaymentMode) => Invoice | null;
+
+  // Pharmacy counter cart
+  cart: CartItem[];
+  addToCart: (item: { id: string; type: CartItem['type']; name: string; price: number }) => { ok: boolean; error?: H.CartError };
   removeFromCart: (itemId: string, removeAll?: boolean) => void;
   decrementCartItem: (itemId: string) => void;
   clearCart: (restoreStock?: boolean) => void;
+  checkoutPharmacyCart: (patientId: string, mode: H.PaymentMode, status?: Invoice['status']) => Invoice | null;
+
+  // Diagnostics
+  orderLabTests: (patientId: string, testIds: string[], opts: H.OrderOptions) => { invoice: Invoice; samples: LabSample[] } | null;
+  orderRadiologyScans: (
+    patientId: string,
+    scanIds: string[],
+    opts: H.OrderOptions & { date?: string; time?: string }
+  ) => { invoice: Invoice; orders: RadiologyOrder[] } | null;
+  receiveSample: (sampleId: string) => LabSample | null;
+  enterLabResults: (sampleId: string, params: LabParameter[]) => LabSample | null;
+  analyzerResultsFor: (testName: string) => LabParameter[];
+  updateLabSampleStatus: (sampleId: string, status: LabSample['status']) => void;
+
+  // Pharmacy review
+  dispensePrescription: (
+    reviewId: string,
+    opts?: { override?: { reason: string; by: string }; paymentMode?: H.PaymentMode }
+  ) => H.DispenseResult;
+  requestClarification: (reviewId: string, note: string) => PrescriptionReviewItem | null;
+  applySaferAlternative: (reviewId: string) => PrescriptionReviewItem | null;
+  /** @deprecated use dispensePrescription / requestClarification */
+  resolvePrescriptionReview: (reviewId: string, status: PrescriptionReviewItem['status']) => void;
+
+  // Nursing & patient app
+  toggleNurseTask: (taskId: string) => void;
+  togglePatientReminder: (id: string) => void;
+
+  // Notifications
+  /** Post an in-app notification (optionally audited). */
+  notify: (n: Parameters<typeof H.notify>[1], auditAction?: string) => void;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
+  clearReadNotifications: () => void;
+
+  // AI
   sendAiMessage: (messageText: string) => void;
+  sendPatientAiMessage: (messageText: string) => void;
+  clearAiChat: () => void;
+  clearPatientChat: () => void;
+
+  // Operations
+  dispatchAmbulance: (ambulanceId: string, trip: { pickup: string; reason: string; priority?: 'Emergency' | 'Routine' }) => Ambulance | null;
+  completeAmbulanceTrip: (ambulanceId: string) => void;
+  setAmbulanceMaintenance: (ambulanceId: string, inService: boolean) => void;
+  issueBlood: (requestId: string) => { ok: boolean; error?: 'INSUFFICIENT' | 'NOT_FOUND' };
+  createBloodRequest: (input: Parameters<typeof H.createBloodRequest>[1]) => void;
+  recordBloodDonation: (group: Parameters<typeof H.recordBloodDonation>[1], units?: number) => void;
+  rejectBloodRequest: (requestId: string, reason: string) => BloodRequest | null;
+  raiseMedicineIndent: (medicineId: string, qty: number) => void;
+  receiveMedicineIndent: (medicineId: string) => void;
+  getWardBedMap: (wardId: string) => { named: Map<number, Patient>; occupied: Set<number>; free: number[] } | null;
+  raiseIndent: (supplyId: string, qty: number) => void;
+  receiveIndent: (supplyId: string) => void;
+  addDocument: (input: Parameters<typeof H.addDocument>[1]) => PatientDocument;
+
+  // Settings
+  updateSettings: (patch: Partial<H.HospitalSettings>) => void;
+  updateHospitalProfile: (patch: Partial<H.HospitalProfile>) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const byDateDesc = <T extends { date?: string }>(a: T, b: T) => ((a.date ?? '') < (b.date ?? '') ? 1 : -1);
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [patients, setPatients] = useState<Patient[]>(INITIAL_PATIENTS);
-  const [doctors] = useState<Doctor[]>(INITIAL_DOCTORS);
-  const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
-  const [medicines, setMedicines] = useState<Medicine[]>(INITIAL_MEDICINES);
-  const [labTests] = useState<LabTest[]>(INITIAL_LAB_TESTS);
-  const [radiologyScans] = useState<RadiologyScan[]>(INITIAL_RADIOLOGY_SCANS);
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(INITIAL_PATIENTS[0]);
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [state, setState] = useState<H.HospitalState>(H.createInitialState);
+  const stateRef = useRef(state);
+  const [aiTyping, setAiTyping] = useState(false);
+  const [patientAiTyping, setPatientAiTyping] = useState(false);
+  const { showToast } = useToast();
 
-  const [aiChatMessages, setAiChatMessages] = useState<AiChatMessage[]>([
-    {
-      id: 'msg-welcome',
-      sender: 'assistant',
-      text: 'Hello Dr. Priya! I am your CareSync AI Hospital Assistant. How can I assist you today?',
-      timestamp: 'Just now',
+  const commit = useCallback((next: H.HospitalState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  /** Runs a pure transition against the latest state and commits it. */
+  const run = useCallback(
+    <R,>(fn: (s: H.HospitalState) => H.Transition<R>): R => {
+      const { state: next, result } = fn(stateRef.current);
+      commit(next);
+      return result;
     },
-  ]);
-
-  // Derived metrics
-  const todayCollection = invoices
-    .filter((inv) => inv.status === 'Paid')
-    .reduce((sum, inv) => sum + inv.amount, 477450); // Base historical + dynamic
-  const totalPatients = patients.length + 1243;
-  const opdToday = appointments.filter((a) => a.type === 'OPD').length + 119;
-  const admittedCount = patients.filter((p) => p.status === 'Admitted').length + 17;
-  const ipdOccupancy = Math.min(Math.round((admittedCount / 30) * 100), 100);
-
-  const addPatient = (patientData: Omit<Patient, 'id' | 'uhid' | 'registeredDate'>): Patient => {
-    const newPatient: Patient = {
-      ...patientData,
-      id: `pat-${Date.now()}`,
-      uhid: generateUHID(),
-      registeredDate: new Date().toISOString().split('T')[0],
-      status: 'Active',
-    };
-    setPatients((prev) => [newPatient, ...prev]);
-
-    // Add registration invoice
-    createInvoice({
-      type: 'REG',
-      patientId: newPatient.id,
-      amount: 500,
-      paymentMode: 'UPI',
-      title: 'Registration Fee',
-      items: [{ description: 'New Patient Registration & Smart UHID Card', qty: 1, amount: 500 }],
-    });
-
-    // Add notification
-    const newNotif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: 'New patient registered',
-      description: `${newPatient.name} registered with UHID ${newPatient.uhid}`,
-      category: 'System',
-      timestamp: 'Just now',
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-
-    return newPatient;
-  };
-
-  const bookAppointment = (data: {
-    patientId: string;
-    doctorId: string;
-    department: string;
-    type: 'OPD' | 'IPD' | 'Follow Up';
-    date: string;
-    time: string;
-  }): Appointment => {
-    const patient = patients.find((p) => p.id === data.patientId) || patients[0];
-    const doctor = doctors.find((d) => d.id === data.doctorId) || doctors[0];
-
-    const newAppointment: Appointment = {
-      id: `apt-${Date.now()}`,
-      patientId: data.patientId,
-      patientName: patient.name,
-      doctorId: data.doctorId,
-      doctorName: doctor.name,
-      department: data.department || doctor.department,
-      type: data.type,
-      date: data.date,
-      time: data.time,
-      status: 'Confirmed',
-      tokenNo: appointments.length + 1,
-    };
-
-    setAppointments((prev) => [newAppointment, ...prev]);
-
-    // Create consultation invoice
-    createInvoice({
-      type: 'OPD',
-      patientId: patient.id,
-      amount: doctor.fee,
-      paymentMode: 'UPI',
-      title: 'OPD Consultation Fee',
-      doctorName: `${doctor.name} (${doctor.department})`,
-      items: [{ description: `Specialist Consultation - ${doctor.name}`, qty: 1, rate: doctor.fee, amount: doctor.fee }],
-    });
-
-    // Add notification
-    const newNotif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: 'New appointment booked',
-      description: `${patient.name} with ${doctor.name} at ${data.time}`,
-      category: 'Appointments',
-      timestamp: 'Just now',
-      read: false,
-    };
-    setNotifications((prev) => [newNotif, ...prev]);
-
-    return newAppointment;
-  };
-
-  const updateAppointmentStatus = (appointmentId: string, status: Appointment['status']) => {
-    setAppointments((prev) =>
-      prev.map((apt) => (apt.id === appointmentId ? { ...apt, status } : apt))
-    );
-  };
-
-  const createInvoice = (invoiceData: {
-    type: Invoice['type'];
-    patientId: string;
-    amount: number;
-    paymentMode: Invoice['paymentMode'];
-    title: string;
-    items: Array<{ description: string; qty?: number; rate?: number; amount: number }>;
-    doctorName?: string;
-  }): Invoice => {
-    const patient = patients.find((p) => p.id === invoiceData.patientId) || patients[0];
-    const now = new Date();
-    const timeFormatted = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-    const dateFormatted = `${now.getDate()} ${now.toLocaleString('default', { month: 'short' })} ${now.getFullYear()}`;
-
-    const newInvoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNo: generateReceiptNo(invoiceData.type),
-      title: invoiceData.title,
-      type: invoiceData.type,
-      patientId: invoiceData.patientId,
-      patientName: patient?.name || 'Walk-in Patient',
-      uhid: patient?.uhid || generateUHID(),
-      date: dateFormatted,
-      time: timeFormatted,
-      amount: invoiceData.amount,
-      paymentMode: invoiceData.paymentMode,
-      status: 'Paid',
-      doctorName: invoiceData.doctorName,
-      items: invoiceData.items,
-    };
-
-    setInvoices((prev) => [newInvoice, ...prev]);
-    return newInvoice;
-  };
-
-  const admitPatientToIPD = (patientId: string, roomType: string, department: string, notes?: string) => {
-    setPatients((prev) =>
-      prev.map((p) =>
-        p.id === patientId ? { ...p, status: 'Admitted', room: `${roomType} Room` } : p
-      )
-    );
-
-    const patient = patients.find((p) => p.id === patientId);
-    if (patient) {
-      createInvoice({
-        type: 'IPD',
-        patientId,
-        amount: roomType.includes('ICU') ? 7500 : 3500,
-        paymentMode: 'Card',
-        title: 'IPD Admission Advance & Room Charge',
-        items: [
-          { description: `${roomType} Room Admission Charge`, qty: 1, amount: roomType.includes('ICU') ? 5000 : 2500 },
-          { description: 'Nursing & Sanitization Fee', qty: 1, amount: 1000 },
-        ],
-      });
-
-      const newNotif: AppNotification = {
-        id: `notif-${Date.now()}`,
-        title: 'Patient admitted',
-        description: `${patient.name} admitted to ${roomType} (${department})`,
-        category: 'Appointments',
-        timestamp: 'Just now',
-        read: false,
-      };
-      setNotifications((prev) => [newNotif, ...prev]);
-    }
-  };
-
-  const dischargePatient = (patientId: string) => {
-    setPatients((prev) =>
-      prev.map((p) => (p.id === patientId ? { ...p, status: 'Discharged' } : p))
-    );
-  };
-
-  const addToCart = (item: { id: string; type: CartItem['type']; name: string; price: number }) => {
-    if (item.type === 'medicine') {
-      const med = medicines.find((m) => m.id === item.id);
-      if (med && med.stock <= 0) {
-        return;
-      }
-    }
-
-    setCart((prev) => {
-      const existing = prev.find((ci) => ci.id === item.id);
-      if (existing) {
-        return prev.map((ci) => (ci.id === item.id ? { ...ci, qty: ci.qty + 1 } : ci));
-      }
-      return [...prev, { ...item, qty: 1 }];
-    });
-
-    if (item.type === 'medicine') {
-      setMedicines((prev) =>
-        prev.map((m) => (m.id === item.id ? { ...m, stock: Math.max(0, m.stock - 1) } : m))
-      );
-    }
-  };
-
-  const decrementCartItem = (itemId: string) => {
-    const item = cart.find((ci) => ci.id === itemId);
-    if (!item) return;
-
-    if (item.type === 'medicine') {
-      setMedicines((prev) =>
-        prev.map((m) => (m.id === itemId ? { ...m, stock: m.stock + 1 } : m))
-      );
-    }
-
-    if (item.qty > 1) {
-      setCart((prev) =>
-        prev.map((ci) => (ci.id === itemId ? { ...ci, qty: ci.qty - 1 } : ci))
-      );
-    } else {
-      setCart((prev) => prev.filter((ci) => ci.id !== itemId));
-    }
-  };
-
-  const removeFromCart = (itemId: string, removeAll: boolean = false) => {
-    const item = cart.find((ci) => ci.id === itemId);
-    if (!item) return;
-
-    if (!removeAll && item.qty > 1) {
-      decrementCartItem(itemId);
-      return;
-    }
-
-    if (item.type === 'medicine') {
-      setMedicines((prev) =>
-        prev.map((m) => (m.id === itemId ? { ...m, stock: m.stock + item.qty } : m))
-      );
-    }
-    setCart((prev) => prev.filter((ci) => ci.id !== itemId));
-  };
-
-  const clearCart = (restoreStock: boolean = false) => {
-    if (restoreStock) {
-      cart.forEach((item) => {
-        if (item.type === 'medicine') {
-          setMedicines((prev) =>
-            prev.map((m) => (m.id === item.id ? { ...m, stock: m.stock + item.qty } : m))
-          );
-        }
-      });
-    }
-    setCart([]);
-  };
-
-  const markNotificationAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
-
-  const markAllNotificationsAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  };
-
-  const sendAiMessage = (messageText: string) => {
-    const userMsg: AiChatMessage = {
-      id: `msg-${Date.now()}`,
-      sender: 'user',
-      text: messageText,
-      timestamp: 'Just now',
-    };
-
-    setAiChatMessages((prev) => [...prev, userMsg]);
-
-    // Process AI simulation response
-    setTimeout(() => {
-      const lower = messageText.toLowerCase();
-      let replyText = '';
-      let actionCard: AiChatMessage['actionCard'] = undefined;
-
-      if (lower.includes('pending bills') || lower.includes('10,000')) {
-        replyText =
-          'Found 3 patients with pending bills totaling ₹28,500:\n\n• Vikram K (UHID: CC202500128) - Room Charges: ₹4,500\n• Sunita Patel (UHID: CC202500084) - Surgery Balance: ₹14,000\n• George Thomas (UHID: CC202500099) - ICU Day 2: ₹10,000';
-        actionCard = {
-          type: 'invoice',
-          title: 'Pending Invoices Review',
-          description: '3 high-value invoices require clearance before discharge.',
-          actionLabel: 'View Billing',
-          route: 'Billing',
-        };
-      } else if (lower.includes('opd collection') || lower.includes('report') || lower.includes('collection')) {
-        replyText =
-          `Today's OPD Collection summary as of now:\n\n• Total OPD Invoices: ${appointments.length + 119}\n• Direct Consultations: ₹8,45,000\n• Pharmacy Collections: ₹6,10,000\n• Total Revenue Today: ₹4,82,500 (+15% vs yesterday)\n\nCash: 35% | UPI: 52% | Cards: 13%`;
-        actionCard = {
-          type: 'report',
-          title: 'Financial Daily Breakdown',
-          description: 'All collections verified with bank ledger reconciliation.',
-          actionLabel: 'Financial Summary',
-          route: 'FinancialManagement',
-        };
-      } else if (lower.includes('bed') || lower.includes('icu') || lower.includes('availability')) {
-        replyText =
-          'Current Bed Status:\n\n• ICU: 2 beds available out of 8 (75% occupancy)\n• General Ward: 12 beds available out of 30\n• Private Deluxe: 4 rooms available\n\nTotal Hospital Occupancy is at 78%.';
-      } else if (lower.includes('discharge') || lower.includes('ananya')) {
-        replyText =
-          'Discharge summary prepared for Ananya S (UHID: CC202500125):\n\n• Primary Diagnosis: Acute Viral Fever\n• Stay Duration: 5 days (Room 101)\n• Discharge Status: Medically Stable, Cleared by Dr. Priya Menon.\n• Follow-up: 1 week';
-        actionCard = {
-          type: 'patient',
-          title: 'Discharge Summary - Ananya S',
-          description: 'Clinical notes and digital prescription ready for PDF export.',
-          actionLabel: 'Open Summary',
-          route: 'DischargeSummary',
-        };
-      } else if (lower.includes('receipt') || lower.includes('rahul')) {
-        replyText =
-          'Found receipt for Rahul Nair:\n\n• Receipt No: OPD-2026-00891\n• Amount: ₹1,200 (Paid via Cash)\n• Service: Specialist Consultation (Cardiology)\n• Date: 22 Sep 2025 09:45 AM';
-        actionCard = {
-          type: 'invoice',
-          title: 'Receipt #OPD-2026-00891',
-          description: 'Payment verified and stamped by Dr. Priya Menon.',
-          actionLabel: 'View Receipt',
-          route: 'ReceiptDetail',
-          params: { invoiceId: 'inv-2' },
-        };
-      } else if (lower.includes('appointment')) {
-        replyText =
-          `You have ${appointments.length} appointments scheduled today. Next up:\n• Ananya S at 09:00 AM (General Medicine)\n• Rahul Nair at 10:00 AM (Cardiology)\n• Sneha Joseph at 11:30 AM (Dermatology)`;
-        actionCard = {
-          type: 'appointment',
-          title: "Today's Schedule",
-          description: `${appointments.length} patients lined up for consultation.`,
-          actionLabel: 'View Schedule',
-          route: 'Appointments',
-        };
-      } else {
-        replyText =
-          `I processed your query: "${messageText}". All hospital modules (OPD, IPD, Billing, Pharmacy, and Diagnostics) are synced. Let me know if you would like me to pull up specific patient records, generate financial invoices, or check room availability.`;
-      }
-
-      const assistantMsg: AiChatMessage = {
-        id: `msg-${Date.now() + 1}`,
-        sender: 'assistant',
-        text: replyText,
-        timestamp: 'Just now',
-        actionCard,
-      };
-
-      setAiChatMessages((prev) => [...prev, assistantMsg]);
-    }, 600);
-  };
-
-  return (
-    <AppContext.Provider
-      value={{
-        patients,
-        doctors,
-        appointments,
-        invoices,
-        medicines,
-        labTests,
-        radiologyScans,
-        notifications,
-        selectedPatient,
-        cart,
-        aiChatMessages,
-        todayStats: {
-          totalPatients,
-          opdToday,
-          ipdOccupancy,
-          surgeriesToday: 12,
-          todayCollection,
-        },
-        setSelectedPatient,
-        addPatient,
-        bookAppointment,
-        updateAppointmentStatus,
-        createInvoice,
-        admitPatientToIPD,
-        dischargePatient,
-        addToCart,
-        decrementCartItem,
-        removeFromCart,
-        clearCart,
-        markNotificationAsRead,
-        markAllNotificationsAsRead,
-        sendAiMessage,
-      }}
-    >
-      {children}
-    </AppContext.Provider>
+    [commit]
   );
+
+  const update = useCallback((fn: (s: H.HospitalState) => H.HospitalState) => commit(fn(stateRef.current)), [commit]);
+
+  const actions = useMemo(() => {
+    const reply = (
+      key: 'aiChatMessages' | 'patientChatMessages',
+      text: string,
+      answer: (s: H.HospitalState) => AiAnswer,
+      setTyping: (v: boolean) => void
+    ) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const userMsg: H.AiChatMessage = {
+        id: H.newId('msg'),
+        sender: 'user',
+        text: trimmed,
+        timestamp: formatClock(),
+        createdAt: Date.now(),
+      };
+      update((s) => ({ ...s, [key]: [...s[key], userMsg] }));
+      setTyping(true);
+      // A short, length-aware "thinking" pause keeps the simulation believable.
+      setTimeout(() => {
+        const a = answer(stateRef.current);
+        const assistantMsg: H.AiChatMessage = {
+          id: H.newId('msg'),
+          sender: 'assistant',
+          text: a.text,
+          timestamp: formatClock(),
+          createdAt: Date.now(),
+          actionCard: a.actionCard,
+          citations: a.citations,
+          followUps: a.followUps,
+        };
+        update((s) =>
+          H.withAudit({ ...s, [key]: [...s[key], assistantMsg] }, 'AI query answered', trimmed.slice(0, 60), 'MediOS AI')
+        );
+        setTyping(false);
+      }, 650 + Math.min(900, trimmed.length * 10));
+    };
+
+    return {
+      // Session
+      setActiveRole: (role: UserRole) => {
+        if (stateRef.current.activeRole === role) return;
+        update((s) => H.withAudit({ ...s, activeRole: role }, `Switched role to ${role}`));
+        // Portals switch role when opened; say so, so later access checks aren't a surprise.
+        showToast({ message: `Now working as ${ROLE_LABEL[role]} — access follows this role.`, title: `${ROLE_LABEL[role]} view`, type: 'info', icon: 'swap-horizontal' });
+      },
+      setSelectedPatient: (patient: Patient | null) => update((s) => ({ ...s, selectedPatientId: patient?.id ?? null })),
+      setSelectedPatientId: (id: string | null) => update((s) => ({ ...s, selectedPatientId: id })),
+      setPatientAppUser: (patientId: string) => update((s) => ({ ...s, patientAppUserId: patientId, patientChatMessages: [] })),
+
+      // Patients & appointments
+      registerPatient: (input: H.RegisterPatientInput) => run((s) => H.registerPatient(s, input)),
+      addPatient: (data: Omit<Patient, 'id' | 'uhid' | 'registeredDate'>) =>
+        run((s) =>
+          H.registerPatient(s, {
+            name: data.name,
+            phone: data.phone,
+            dob: data.dob,
+            gender: data.gender,
+            address: data.address,
+            bloodGroup: data.bloodGroup,
+            insurance: data.insurance,
+          })
+        ).patient,
+      scheduleAppointment: (input: H.ScheduleInput) => run((s) => H.scheduleAppointment(s, input)),
+      bookAppointment: (data: { patientId: string; doctorId: string; department: string; type: 'OPD' | 'IPD' | 'Follow Up'; date: string; time: string }) => {
+        const result = run((s) => H.scheduleAppointment(s, data));
+        if (!result.ok) throw new Error(`Booking failed: ${result.error}`);
+        return result.appointment;
+      },
+      updateAppointmentStatus: (appointmentId: string, status: Appointment['status']) => {
+        run((s) => H.updateAppointmentStatus(s, appointmentId, status));
+      },
+
+      // Clinical
+      saveConsultation: (input: H.ConsultationInput) => run((s) => H.saveConsultation(s, input)),
+      recordVitals: (patientId: string, input: H.VitalsInput, recordedBy?: string) => run((s) => H.recordVitals(s, patientId, input, recordedBy)),
+      saveClinicalNote: (patientId: string, content: string, source: ClinicalNote['source'], approvedBy: string) =>
+        run((s) => H.saveClinicalNote(s, patientId, content, source, approvedBy)),
+      admitPatient: (input: H.AdmitInput) => run((s) => H.admitPatient(s, input)),
+      admitPatientToIPD: (patientId: string, roomType: string, department: string, notes?: string) => {
+        const type: H.RoomType = /icu/i.test(roomType) ? 'ICU' : /private|deluxe/i.test(roomType) ? 'Private' : 'General Ward';
+        run((s) => H.admitPatient(s, { patientId, roomType: type, department, notes }));
+      },
+      dischargePatient: (patientId: string) => run((s) => H.dischargePatient(s, patientId)),
+
+      // Billing
+      createInvoice: (input: H.CreateInvoiceInput) => run((s) => H.createInvoice(s, input)),
+      markInvoicePaid: (invoiceId: string, mode: H.PaymentMode) => run((s) => H.markInvoicePaid(s, invoiceId, mode)),
+
+      // Pharmacy counter cart
+      addToCart: (item: { id: string; type: CartItem['type']; name: string; price: number }) => run((s) => H.addToCart(s, item)),
+      removeFromCart: (itemId: string, removeAll: boolean = false) =>
+        update((s) => {
+          const item = s.cart.find((c) => c.id === itemId);
+          if (!item) return s;
+          return !removeAll && item.qty > 1 ? H.decrementCartItem(s, itemId) : H.removeFromCart(s, itemId);
+        }),
+      decrementCartItem: (itemId: string) => update((s) => H.decrementCartItem(s, itemId)),
+      // Stock is only deducted at checkout, so clearing never needs to restore it.
+      clearCart: (_restoreStock?: boolean) => update((s) => ({ ...s, cart: [] })),
+      checkoutPharmacyCart: (patientId: string, mode: H.PaymentMode, status?: Invoice['status']) =>
+        run((s) => H.checkoutPharmacyCart(s, patientId, mode, status)),
+
+      // Diagnostics
+      orderLabTests: (patientId: string, testIds: string[], opts: H.OrderOptions) => run((s) => H.orderLabTests(s, patientId, testIds, opts)),
+      orderRadiologyScans: (patientId: string, scanIds: string[], opts: H.OrderOptions & { date?: string; time?: string }) =>
+        run((s) => H.orderRadiologyScans(s, patientId, scanIds, opts)),
+      receiveSample: (sampleId: string) => run((s) => H.receiveSample(s, sampleId)),
+      enterLabResults: (sampleId: string, params: LabParameter[]) => run((s) => H.enterLabResults(s, sampleId, params)),
+      analyzerResultsFor: H.analyzerResultsFor,
+      updateLabSampleStatus: (sampleId: string, status: LabSample['status']) => {
+        run((s) => H.updateLabSampleStatus(s, sampleId, status));
+      },
+
+      // Pharmacy review
+      dispensePrescription: (reviewId: string, opts?: { override?: { reason: string; by: string }; paymentMode?: H.PaymentMode }) =>
+        run((s) => H.dispensePrescription(s, reviewId, opts)),
+      requestClarification: (reviewId: string, note: string) => run((s) => H.requestClarification(s, reviewId, note)),
+      applySaferAlternative: (reviewId: string) => run((s) => H.applySaferAlternative(s, reviewId)),
+      resolvePrescriptionReview: (reviewId: string, status: PrescriptionReviewItem['status']) => {
+        if (status === 'Dispensed') {
+          run((s) => H.dispensePrescription(s, reviewId, { override: { reason: 'Legacy approval', by: H.ROLE_ACTOR.pharmacy } }));
+        } else if (status === 'Doctor Clarification') {
+          run((s) => H.requestClarification(s, reviewId, 'Please review the flagged prescription'));
+        }
+      },
+
+      // Nursing & patient app
+      toggleNurseTask: (taskId: string) => {
+        run((s) => H.toggleNurseTask(s, taskId));
+      },
+      togglePatientReminder: (id: string) => {
+        run((s) => H.togglePatientReminder(s, id));
+      },
+      notify: (n: Parameters<typeof H.notify>[1], auditAction?: string) => update((s) => H.notify(s, n, auditAction)),
+
+      // Notifications
+      markNotificationAsRead: (id: string) =>
+        update((s) => ({ ...s, notifications: s.notifications.map((n) => (n.id === id ? { ...n, read: true } : n)) })),
+      markAllNotificationsAsRead: () => update((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) })),
+      clearReadNotifications: () => update((s) => ({ ...s, notifications: s.notifications.filter((n) => !n.read) })),
+
+      // AI
+      sendAiMessage: (text: string) => reply('aiChatMessages', text, (s) => answerStaffQuery(text, s), setAiTyping),
+      sendPatientAiMessage: (text: string) =>
+        reply('patientChatMessages', text, (s) => answerPatientQuery(text, s, s.patientAppUserId), setPatientAiTyping),
+      clearAiChat: () => update((s) => ({ ...s, aiChatMessages: [] })),
+      clearPatientChat: () => update((s) => ({ ...s, patientChatMessages: [] })),
+
+      // Operations
+      dispatchAmbulance: (id: string, trip: { pickup: string; reason: string; priority?: 'Emergency' | 'Routine' }) =>
+        run((s) => H.dispatchAmbulance(s, id, trip)),
+      completeAmbulanceTrip: (id: string) => {
+        run((s) => H.completeAmbulanceTrip(s, id));
+      },
+      setAmbulanceMaintenance: (id: string, inService: boolean) => {
+        run((s) => H.setAmbulanceMaintenance(s, id, inService));
+      },
+      issueBlood: (requestId: string) => run((s) => H.issueBlood(s, requestId)),
+      createBloodRequest: (input: Parameters<typeof H.createBloodRequest>[1]) => {
+        run((s) => H.createBloodRequest(s, input));
+      },
+      recordBloodDonation: (group: Parameters<typeof H.recordBloodDonation>[1], units = 1) =>
+        update((s) => H.recordBloodDonation(s, group, units)),
+      rejectBloodRequest: (requestId: string, reason: string) => run((s) => H.rejectBloodRequest(s, requestId, reason)),
+      raiseMedicineIndent: (medicineId: string, qty: number) => {
+        run((s) => H.raiseMedicineIndent(s, medicineId, qty));
+      },
+      receiveMedicineIndent: (medicineId: string) => {
+        run((s) => H.receiveMedicineIndent(s, medicineId));
+      },
+      raiseIndent: (supplyId: string, qty: number) => {
+        run((s) => H.raiseIndent(s, supplyId, qty));
+      },
+      receiveIndent: (supplyId: string) => {
+        run((s) => H.receiveIndent(s, supplyId));
+      },
+      addDocument: (input: Parameters<typeof H.addDocument>[1]) => run((s) => H.addDocument(s, input)),
+
+      // Settings
+      updateSettings: (patch: Partial<H.HospitalSettings>) => update((s) => ({ ...s, settings: { ...s.settings, ...patch } })),
+      updateHospitalProfile: (patch: Partial<H.HospitalProfile>) =>
+        update((s) => H.withAudit({ ...s, hospitalProfile: { ...s.hospitalProfile, ...patch } }, 'Updated hospital profile')),
+
+      // Reads that must see the very latest state (used inside event handlers)
+      getAvailableSlots: (doctorId: string, dateISO: string) => H.getAvailableSlots(stateRef.current, doctorId, dateISO),
+      checkDrugsForPatient: (patientId: string, drugs: string[]) => H.checkDrugsForPatient(stateRef.current, patientId, drugs),
+      findDuplicatePatients: (phone: string, name?: string) => H.findDuplicatePatients(stateRef.current, phone, name),
+      askCopilot: (query: string, patientId?: string) => answerStaffQuery(query, stateRef.current, patientId),
+    };
+  }, [run, update, showToast]);
+
+  const derived = useMemo(() => {
+    const todayStats = H.todayStatsFor(state);
+    return {
+      selectedPatient: H.findPatient(state, state.selectedPatientId) ?? null,
+      patientAppUser: H.findPatient(state, state.patientAppUserId),
+      todayStats,
+      bedSummary: H.bedSummary(state),
+      labPipeline: H.labPipelineCounts(state),
+      aiAlerts: buildAiAlerts(state),
+      upcomingAppointments: H.upcomingAppointments(state, 3),
+      unreadCount: state.notifications.filter((n) => !n.read).length,
+      getPatient: (id?: string | null) => H.findPatient(state, id),
+      getProfile: (patientId: string) => H.findProfile(state, patientId),
+      getVitals: (patientId: string) =>
+        state.vitals.filter((v) => v.patientId === patientId).sort((a, b) => (a.date === b.date ? 0 : a.date < b.date ? 1 : -1)),
+      getLatestVitals: (patientId: string) => H.latestVitals(state.vitals, patientId),
+      getVisits: (patientId: string) => state.visits.filter((v) => v.patientId === patientId).sort(byDateDesc),
+      getLabResults: (patientId: string) => resultsForPatient(state.labSamples, patientId),
+      getLabOrders: (patientId: string) => state.labSamples.filter((x) => x.patientId === patientId).sort(byDateDesc),
+      getLabTrends: (patientId: string) => labTrends(state.labSamples, patientId),
+      getRadiologyOrders: (patientId: string) => state.radiologyOrders.filter((o) => o.patientId === patientId).sort(byDateDesc),
+      getInvoicesForPatient: (patientId: string) => state.invoices.filter((i) => i.patientId === patientId),
+      getAppointmentsForPatient: (patientId: string) => state.appointments.filter((a) => a.patientId === patientId).sort(byDateDesc),
+      getDocuments: (patientId: string) => state.documents.filter((d) => d.patientId === patientId).sort(byDateDesc),
+      getClinicalNotes: (patientId: string) => state.clinicalNotes.filter((n) => n.patientId === patientId).sort(byDateDesc),
+      getDischargeSummary: (patientId: string) => H.buildDischargeSummary(state, patientId),
+      getRevenue: (period: RevenuePeriod) => revenueForPeriod(REVENUE_BY_PERIOD, period, todayStats.todayCollection),
+      getCopilotStats: (doctorName: string) => H.copilotStats(state, doctorName),
+      getWardBedMap: (wardId: string) => {
+        const ward = state.wardInfo.find((w) => w.id === wardId);
+        return ward ? H.wardBedMap(state, ward) : null;
+      },
+    };
+  }, [state]);
+
+  const value = useMemo<AppContextType>(
+    () => ({ ...state, ...derived, ...actions, aiTyping, patientAiTyping }),
+    [state, derived, actions, aiTyping, patientAiTyping]
+  );
+
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 };
 
 export const useApp = () => {

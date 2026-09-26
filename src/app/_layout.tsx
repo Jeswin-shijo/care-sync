@@ -5,6 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { AppProvider } from '../context/AppContext';
 import { AlertProvider } from '../context/AlertContext';
+import { ToastProvider } from '../context/ToastContext';
+import { colors } from '../constants/theme';
 
 LogBox.ignoreLogs([
   'SafeAreaView has been deprecated',
@@ -14,34 +16,22 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <AlertProvider>
-        <AppProvider>
-          <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="appointments" options={{ headerShown: false }} />
-        <Stack.Screen name="book-appointment" options={{ headerShown: false }} />
-        <Stack.Screen name="patient/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="register-patient" options={{ headerShown: false }} />
-        <Stack.Screen name="opd-consultation" options={{ headerShown: false }} />
-        <Stack.Screen name="ipd-admission" options={{ headerShown: false }} />
-        <Stack.Screen name="pharmacy" options={{ headerShown: false }} />
-        <Stack.Screen name="lab" options={{ headerShown: false }} />
-        <Stack.Screen name="radiology" options={{ headerShown: false }} />
-        <Stack.Screen name="receipt/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="receipt-templates" options={{ headerShown: false }} />
-        <Stack.Screen name="discharge-summary" options={{ headerShown: false }} />
-        <Stack.Screen name="financial-management" options={{ headerShown: false }} />
-        <Stack.Screen name="reports" options={{ headerShown: false }} />
-        <Stack.Screen name="notifications" options={{ headerShown: false }} />
-        <Stack.Screen name="settings" options={{ headerShown: false }} />
-      </Stack>
-        </AppProvider>
+        <ToastProvider>
+          <AppProvider>
+            <StatusBar style="dark" />
+            {/* Every route uses its own <Header />, so the native header is off app-wide. */}
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: 'slide_from_right',
+                contentStyle: { backgroundColor: colors.background },
+              }}
+            >
+              <Stack.Screen name="index" options={{ animation: 'fade' }} />
+              <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+            </Stack>
+          </AppProvider>
+        </ToastProvider>
       </AlertProvider>
     </SafeAreaProvider>
   );

@@ -1,194 +1,177 @@
-import React, { useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useApp } from '../../context/AppContext';
-import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
+import type { UserRole } from '../../context/AppContext';
+import type { AiActionCard } from '../../logic/hospital';
+import { ROLE_LABEL } from '../../logic/access';
+import { colors, radius, spacing, typography } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
+import { Button } from '../../components/common/Button';
+import { EmptyState } from '../../components/common/EmptyState';
+import { FadeInView, PulseDot } from '../../components/common/Motion';
+import { openRoute } from '../../utils/navigation';
+import { ChatConversation } from '../../components/ai/ChatConversation';
+import { RobotAvatar } from '../../components/ai/RobotAvatar';
+import { Suggestion, SuggestionList } from '../../components/ai/SuggestionList';
 
-const PROMPT_SUGGESTIONS = [
-  "Show today's appointments",
-  "Generate today's OPD collection report",
-  "Find all patients with pending bills above ₹10,000",
-  "Create a discharge summary for Ananya S",
-  "Find the receipt for Rahul's payment yesterday",
+const GREETING_NAME: Record<UserRole, string> = {
+  doctor: 'Dr. Priya',
+  admin: 'Rajiv',
+  nurse: 'Anjali',
+  lab: 'Vishnu',
+  pharmacy: 'Neethu',
+  patient: 'there',
+};
+
+const SUGGESTIONS: Suggestion[] = [
+  { text: 'Find all patients with pending bills above ₹10,000', icon: 'wallet-outline', color: colors.warning },
+  { text: "Generate today's OPD collection report", icon: 'bar-chart-outline', color: colors.success },
+  { text: 'Show bed availability in ICU', icon: 'bed-outline', color: colors.purple },
+  { text: 'Create a discharge summary for Ananya S', icon: 'document-text-outline', color: colors.primary },
+  { text: "Find the receipt for Rahul's payment yesterday", icon: 'receipt-outline', color: '#0EA5E9' },
+  { text: 'Show all diabetic patients with abnormal HbA1c', icon: 'flask-outline', color: colors.danger },
+  { text: "Check Rahul's drug interactions", icon: 'medkit-outline', color: colors.orange },
 ];
 
+/** Puts the prompts a role reaches for first at the top; the rest keep the design order. */
+const ROLE_FIRST: Partial<Record<UserRole, string>> = {
+  nurse: 'Show bed availability in ICU',
+  lab: 'Show all diabetic patients with abnormal HbA1c',
+  pharmacy: "Check Rahul's drug interactions",
+};
+
+const VOICE_TRANSCRIPTS: Record<UserRole, string[]> = {
+  doctor: ["Show today's appointments for Dr. Priya", 'Any critical lab results today?', "Check Rahul's drug interactions", 'Show all diabetic patients with abnormal HbA1c'],
+  admin: ["Generate today's OPD collection report", 'Find all patients with pending bills above 10,000', 'Show bed availability in ICU'],
+  nurse: ['Which patients are admitted?', 'Show bed availability in ICU', "Show today's appointments"],
+  lab: ['Any critical lab results today?', 'Show all diabetic patients with abnormal HbA1c'],
+  pharmacy: ["Check Rahul's drug interactions", 'Any prescriptions flagged for safety?'],
+  patient: [],
+};
+
+const GUARDRAIL = 'MediOS AI answers only from hospital records • cites sources • a clinician approves anything it drafts';
+
 export default function AiAssistantRoute() {
-  const { aiChatMessages, sendAiMessage } = useApp();
+  const { activeRole, aiChatMessages, aiTyping, sendAiMessage, clearAiChat, setActiveRole, hospitalProfile } = useApp();
 
-  const [inputText, setInputText] = useState('');
-  const scrollViewRef = useRef<ScrollView>(null);
+  const suggestions = useMemo(() => {
+    const first = ROLE_FIRST[activeRole];
+    return first ? [...SUGGESTIONS.filter((s) => s.text === first), ...SUGGESTIONS.filter((s) => s.text !== first)] : SUGGESTIONS;
+  }, [activeRole]);
 
-  const handleSend = (textToSend?: string) => {
-    const text = textToSend || inputText;
-    if (!text.trim()) return;
-    sendAiMessage(text);
-    setInputText('');
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 150);
+  const voice = useMemo(
+    () => ({
+      transcripts: VOICE_TRANSCRIPTS[activeRole],
+      subtitle: 'Ask your question out loud',
+      hint: `Try: “${VOICE_TRANSCRIPTS[activeRole][0] ?? "Show today's appointments"}”`,
+    }),
+    [activeRole]
+  );
+
+  const onActionPress = useCallback((card: AiActionCard) => {
+    if (card.route) openRoute(card.route, card.params);
+  }, []);
+
+  const confirmNewChat = () => {
+    if (aiTyping) return;
+    Alert.alert('Start a new chat?', 'This clears the current conversation with MediOS AI.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'New chat', style: 'destructive', onPress: clearAiChat },
+    ]);
   };
 
-  const handleActionCardPress = (actionCard: any) => {
-    if (actionCard.route === 'Billing') {
-      router.push('/(tabs)/billing');
-    } else if (actionCard.route === 'FinancialManagement') {
-      router.push('/financial-management');
-    } else if (actionCard.route === 'DischargeSummary') {
-      router.push('/discharge-summary');
-    } else if (actionCard.route === 'ReceiptDetail') {
-      router.push({
-        pathname: '/receipt/[id]',
-        params: { id: actionCard.params?.invoiceId || 'inv-2' },
-      });
-    } else if (actionCard.route === 'Appointments') {
-      router.push('/appointments');
-    }
-  };
+  const hasChat = aiChatMessages.length > 0;
+
+  const header = (
+    <Header
+      title="AI Assistant"
+      subtitle="MediOS AI • live hospital records"
+      showBack={false}
+      rightAction={
+        hasChat && activeRole !== 'patient' ? (
+          <Pressable
+            onPress={confirmNewChat}
+            disabled={aiTyping}
+            hitSlop={8}
+            style={({ pressed }) => [styles.newChat, pressed && { backgroundColor: '#DCE8FF' }, aiTyping && { opacity: 0.5 }]}
+            accessibilityRole="button"
+            accessibilityLabel="Start a new chat"
+          >
+            <Ionicons name="create-outline" size={16} color={colors.primary} />
+            <Text style={styles.newChatText}>New chat</Text>
+          </Pressable>
+        ) : undefined
+      }
+    />
+  );
+
+  // RBAC: the staff assistant reads hospital-wide records, which the patient role can't see.
+  if (activeRole === 'patient') {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        {header}
+        <View style={styles.restricted}>
+          <EmptyState
+            icon="lock-closed-outline"
+            title="Staff assistant is restricted"
+            description="You're signed in to the Patient App. Hospital-wide records are only available to staff roles — the Patient Assistant can help with your appointments, reports and medicines."
+            actionTitle="Open Patient Assistant"
+            onActionPress={() => router.push('/patient-assistant')}
+          />
+          <Button
+            title="Switch to Doctor role"
+            variant="outline"
+            onPress={() => setActiveRole('doctor')}
+            icon={<Ionicons name="swap-horizontal" size={16} color={colors.primary} />}
+          />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const renderEmpty = (send: (text: string) => void, busy: boolean) => (
+    <View>
+      <FadeInView style={styles.hero}>
+        <RobotAvatar size={88} />
+        <Text style={styles.hello}>Hello {GREETING_NAME[activeRole]} 👋</Text>
+        <Text style={styles.helloSub}>How can I help you today?</Text>
+        <View style={styles.rolePill}>
+          <PulseDot size={6} color={colors.success} />
+          <Text style={styles.rolePillText} numberOfLines={1}>
+            {ROLE_LABEL[activeRole]} • {hospitalProfile.name}
+          </Text>
+        </View>
+      </FadeInView>
+      <Text style={styles.sectionLabel}>Suggested for you</Text>
+      <SuggestionList items={suggestions} onPress={send} disabled={busy} />
+      <FadeInView delay={380} style={styles.capabilities}>
+        <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+        <Text style={styles.capabilitiesText}>
+          Ask about bills and receipts, collections, beds, appointments, lab results, drug safety, protocols or any patient by name.
+          Long-press an answer to share or copy it.
+        </Text>
+      </FadeInView>
+    </View>
+  );
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <Header
-        title="AI Assistant"
-        showBack={false}
-        rightAction={
-          <View style={styles.botBadge}>
-            <Ionicons name="sparkles" size={16} color={colors.primary} />
-          </View>
-        }
+      {header}
+      <ChatConversation
+        messages={aiChatMessages}
+        typing={aiTyping}
+        onSend={sendAiMessage}
+        onActionPress={onActionPress}
+        renderEmpty={renderEmpty}
+        suggestions={suggestions}
+        placeholder="Ask anything about your hospital…"
+        typingLabel="Checking hospital records…"
+        voice={voice}
+        footerNote={GUARDRAIL}
       />
-
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          ref={scrollViewRef}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        >
-          {/* AI Robot Header Banner */}
-          <View style={styles.welcomeBanner}>
-            <View style={styles.botIconCircle}>
-              <Ionicons name="hardware-chip" size={32} color={colors.primary} />
-            </View>
-            <Text style={styles.greetingTitle}>Hello Dr. Priya 👋</Text>
-            <Text style={styles.greetingSubtitle}>How can I help you today?</Text>
-          </View>
-
-          {/* Quick Prompts List */}
-          <Text style={styles.quickPromptLabel}>Suggested Actions</Text>
-          <View style={styles.promptsContainer}>
-            {PROMPT_SUGGESTIONS.map((prompt, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.promptChip}
-                activeOpacity={0.75}
-                onPress={() => handleSend(prompt)}
-              >
-                <Ionicons name="sparkles-outline" size={14} color={colors.primary} />
-                <Text style={styles.promptText}>{prompt}</Text>
-                <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Chat Messages */}
-          {aiChatMessages.map((msg) => {
-            const isUser = msg.sender === 'user';
-            return (
-              <View
-                key={msg.id}
-                style={[
-                  styles.messageRow,
-                  isUser ? styles.userMessageRow : styles.botMessageRow,
-                ]}
-              >
-                {!isUser && (
-                  <View style={styles.botMiniAvatar}>
-                    <Ionicons name="hardware-chip" size={14} color="#FFFFFF" />
-                  </View>
-                )}
-
-                <View style={{ maxWidth: '82%' }}>
-                  <View
-                    style={[
-                      styles.bubble,
-                      isUser ? styles.userBubble : styles.botBubble,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.messageText,
-                        isUser ? styles.userMessageText : styles.botMessageText,
-                      ]}
-                    >
-                      {msg.text}
-                    </Text>
-                  </View>
-
-                  {/* Interactive Action Card */}
-                  {msg.actionCard && (
-                    <TouchableOpacity
-                      style={styles.actionCard}
-                      activeOpacity={0.8}
-                      onPress={() => handleActionCardPress(msg.actionCard)}
-                    >
-                      <View style={styles.actionCardHeader}>
-                        <Ionicons name="link-outline" size={16} color={colors.primary} />
-                        <Text style={styles.actionCardTitle}>{msg.actionCard.title}</Text>
-                      </View>
-                      <Text style={styles.actionCardDesc}>{msg.actionCard.description}</Text>
-                      {msg.actionCard.actionLabel && (
-                        <View style={styles.cardBtn}>
-                          <Text style={styles.cardBtnText}>
-                            {msg.actionCard.actionLabel} →
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </ScrollView>
-
-        {/* Bottom Input Field */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            value={inputText}
-            onChangeText={setInputText}
-            placeholder="Ask anything about your hospital..."
-            placeholderTextColor={colors.textMuted}
-            style={styles.textInput}
-            onSubmitEditing={() => handleSend()}
-            returnKeyType="send"
-          />
-          <TouchableOpacity
-            style={[
-              styles.sendBtn,
-              inputText.trim().length > 0 && styles.sendBtnActive,
-            ]}
-            onPress={() => handleSend()}
-            disabled={!inputText.trim()}
-          >
-            <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -196,185 +179,84 @@ export default function AiAssistantRoute() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
-  botBadge: {
-    width: 36,
+  newChat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     height: 36,
-    borderRadius: 18,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
     backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  scrollContent: {
-    padding: spacing.base,
-    paddingBottom: 24,
-  },
-  welcomeBanner: {
-    alignItems: 'center',
-    marginVertical: spacing.md,
-  },
-  botIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#EFF6FF',
-    borderWidth: 2,
-    borderColor: '#DBEAFE',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  greetingTitle: {
-    fontSize: typography.fontSizes.xl,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-  },
-  greetingSubtitle: {
-    fontSize: typography.fontSizes.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  quickPromptLabel: {
-    fontSize: 12,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  promptsContainer: {
-    gap: 8,
-    marginBottom: spacing.lg,
-  },
-  promptChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    gap: 10,
-    ...shadows.sm,
-  },
-  promptText: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: typography.fontWeights.medium,
-    color: colors.text,
-  },
-  messageRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  userMessageRow: {
-    justifyContent: 'flex-end',
-  },
-  botMessageRow: {
-    justifyContent: 'flex-start',
-  },
-  botMiniAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bubble: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: radius.lg,
-  },
-  userBubble: {
-    backgroundColor: colors.primary,
-    borderBottomRightRadius: 2,
-  },
-  botBubble: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    borderBottomLeftRadius: 2,
-    ...shadows.sm,
-  },
-  messageText: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  userMessageText: {
-    color: '#FFFFFF',
-  },
-  botMessageText: {
-    color: colors.text,
-  },
-  actionCard: {
-    backgroundColor: '#F0F9FF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: 8,
-  },
-  actionCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  actionCardTitle: {
-    fontSize: 12,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.primaryDark,
-  },
-  actionCardDesc: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  cardBtn: {
-    alignSelf: 'flex-start',
-  },
-  cardBtnText: {
-    fontSize: 12,
+  newChatText: {
+    fontSize: typography.fontSizes.sm - 1,
     fontWeight: typography.fontWeights.bold,
     color: colors.primary,
   },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: colors.borderLight,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+  restricted: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: spacing.base,
     gap: spacing.sm,
   },
-  textInput: {
-    flex: 1,
-    backgroundColor: colors.cardMuted,
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: colors.text,
-  },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.border,
+  hero: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.base,
   },
-  sendBtnActive: {
-    backgroundColor: colors.primary,
+  hello: {
+    fontSize: typography.fontSizes.xl + 2,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  helloSub: {
+    fontSize: typography.fontSizes.md,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  rolePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  rolePillText: {
+    flexShrink: 1,
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.textSecondary,
+  },
+  sectionLabel: {
+    fontSize: typography.fontSizes.xs,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  capabilities: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.base,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.cardMuted,
+  },
+  capabilitiesText: {
+    flex: 1,
+    fontSize: typography.fontSizes.xs + 0.5,
+    color: colors.textSecondary,
+    lineHeight: 17,
   },
 });

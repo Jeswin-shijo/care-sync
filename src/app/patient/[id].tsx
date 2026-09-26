@@ -1,308 +1,431 @@
-import React, { useState } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  Linking,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   ScrollView,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import type { Patient } from '../../data/mockData';
 import { useApp } from '../../context/AppContext';
+import { useToast } from '../../context/ToastContext';
+import { pendingInvoices } from '../../logic/billing';
+import { ROLE_ACTOR } from '../../logic/hospital';
 import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
+import { formatCurrency } from '../../utils/formatters';
+import { exportDocument } from '../../utils/pdfGenerator';
+import { goToTab } from '../../utils/navigation';
 import { Header } from '../../components/common/Header';
 import { Avatar } from '../../components/common/Avatar';
-import { Badge } from '../../components/common/Badge';
+import { Badge, statusVariant } from '../../components/common/Badge';
+import { EmptyState } from '../../components/common/EmptyState';
+import { BottomSheet } from '../../components/common/BottomSheet';
+import { FadeInView, PressableScale } from '../../components/common/Motion';
+import { AllergyBanner } from '../../components/clinical/AllergyBanner';
+import { AnimatedTabs } from '../../components/clinical/AnimatedTabs';
+import { plural, stayDay, telHref } from '../../components/clinical/format';
+import { alertAfterClose } from '../../components/clinical/alerts';
+import { buildPatientSummaryDoc } from '../../components/clinical/documents';
+import { HistoryTab, OverviewTab, ReportsTab, VisitsTab } from '../../components/clinical/PatientRecordTabs';
+import type { IconName } from '../../components/clinical/types';
+
+const TABS = ['Overview', 'Medical History', 'Visits', 'Reports'] as const;
+type Tab = (typeof TABS)[number];
 
 export default function PatientDetailsRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { patients, appointments, invoices } = useApp();
+  const pid = Array.isArray(id) ? id[0] : id;
+  const { getPatient } = useApp();
+  const patient = pid ? getPatient(pid) : undefined;
 
-  const patient = patients.find((p) => p.id === id) || patients[0];
+  if (!patient) {
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <Header title="Patient Details" />
+        <EmptyState
+          icon="person-remove-outline"
+          title="Patient not found"
+          description={`No patient record matches ${pid ? `“${pid}”` : 'this link'}. It may have been merged or the link is out of date.`}
+          actionTitle="Go to Patients"
+          onActionPress={() => goToTab('patients')}
+          style={{ flex: 1 }}
+        />
+      </SafeAreaView>
+    );
+  }
+  return <PatientRecord patient={patient} />;
+}
 
-  const [activeTab, setActiveTab] = useState<'Overview' | 'Medical History' | 'Visits' | 'Reports'>('Overview');
+interface MenuItem {
+  key: string;
+  icon: IconName;
+  label: string;
+  sub?: string;
+  color: string;
+  run: () => void;
+}
 
-  const patientAppointments = appointments.filter(
-    (a) => a.patientId === patient?.id || a.patientName === patient?.name
-  );
-  const patientInvoices = invoices.filter(
-    (i) => i.patientId === patient?.id || i.patientName === patient?.name
-  );
+function PatientRecord({ patient }: { patient: Patient }) {
+  const app = useApp();
+  const { showToast } = useToast();
+  const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<Tab>('Overview');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [reportsReady, setReportsReady] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const tabsY = useRef(0);
+
+  const profile = app.getProfile(patient.id);
+  const vitals = app.getLatestVitals(patient.id);
+  const visits = app.getVisits(patient.id);
+  const appointments = app.getAppointmentsForPatient(patient.id);
+  const labResults = app.getLabResults(patient.id);
+  const labOrders = app.getLabOrders(patient.id);
+  const radiology = app.getRadiologyOrders(patient.id);
+  const invoices = app.getInvoicesForPatient(patient.id);
+  const documents = app.getDocuments(patient.id);
+  const notes = app.getClinicalNotes(patient.id);
+  const summary = app.getDischargeSummary(patient.id);
+  const pendingBills = pendingInvoices(invoices);
+  const outstanding = pendingBills.reduce((sum, i) => sum + i.amount, 0);
+  const admitted = patient.status === 'Admitted';
+  const day = admitted ? stayDay(patient.admittedOn) : null;
+
+  // Reports come from the LIS/RIS — a short simulated fetch the first time the tab opens.
+  useEffect(() => {
+    if (tab !== 'Reports' || reportsReady) return;
+    const t = setTimeout(() => setReportsReady(true), 500);
+    return () => clearTimeout(t);
+  }, [tab, reportsReady]);
+
+  const push = (pathname: string, params: Record<string, string> = {}) =>
+    router.push({ pathname, params: { patientId: patient.id, ...params } });
+
+  const changeTab = (next: Tab) => {
+    setTab(next);
+    // Keep the tab strip in view when switching from deep in a long tab.
+    if (scrollY.current > tabsY.current) scrollRef.current?.scrollTo({ y: tabsY.current, animated: true });
+  };
+
+  const callPatient = () => {
+    Linking.openURL(telHref(patient.phone)).catch(() =>
+      showToast({ type: 'warning', title: 'Calling unavailable', message: `Dial ${patient.phone} from a phone.` })
+    );
+  };
+
+  const shareSummary = async () => {
+    if (exporting) return;
+    setExporting(true);
+    showToast({ type: 'info', message: 'Preparing clinical summary PDF…' });
+    try {
+      await exportDocument(
+        buildPatientSummaryDoc({
+          patient,
+          profile,
+          vitals,
+          labResults,
+          visits,
+          pendingBills,
+          hospital: app.hospitalProfile,
+          preparedBy: patient.attendingDoctor ?? ROLE_ACTOR.doctor,
+        }),
+        `${patient.name.replace(/\s+/g, '_')}_${patient.uhid}_Summary.pdf`,
+        'share'
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const discharge = () => {
+    const room = patient.room ?? 'the ward';
+    Alert.alert(
+      'Confirm Discharge',
+      `Discharge ${patient.name} from ${room}? The bed will be released and the discharge summary finalised.${
+        outstanding > 0 ? `\n\n${formatCurrency(outstanding)} is still pending on ${plural(pendingBills.length, 'bill')}.` : ''
+      }`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discharge',
+          style: 'destructive',
+          onPress: () => {
+            const res = app.dischargePatient(patient.id);
+            if (!res.ok) {
+              alertAfterClose(
+                'Discharge Failed',
+                res.error === 'NOT_ADMITTED' ? `${patient.name} is not currently admitted.` : 'This patient record no longer exists.'
+              );
+              return;
+            }
+            if (res.outstanding > 0) {
+              const top = pendingBills[0];
+              alertAfterClose(
+                'Attention: Dues Pending',
+                `${patient.name} has been discharged and ${room} released.\n\n${formatCurrency(res.outstanding)} is outstanding${
+                  pendingBills.length ? ` on ${plural(pendingBills.length, 'bill')}` : ''
+                }. Collect it before the patient leaves.`,
+                top
+                  ? [
+                      { text: 'Later', style: 'cancel' },
+                      { text: 'Open Bill', onPress: () => router.push({ pathname: '/receipt/[id]', params: { id: top.id } }) },
+                    ]
+                  : undefined
+              );
+            } else {
+              showToast({
+                title: 'Discharge complete',
+                message: `${patient.name} discharged • ${room} released`,
+                type: 'success',
+                action: { label: 'Summary', onPress: () => push('/discharge-summary') },
+              });
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const quickActions: Array<{ key: string; label: string; icon: IconName; color: string; onPress: () => void }> = [
+    { key: 'consult', label: 'Consultation', icon: 'medkit', color: colors.primary, onPress: () => push('/opd-consultation') },
+    admitted
+      ? { key: 'discharge', label: 'Discharge', icon: 'exit-outline', color: colors.danger, onPress: discharge }
+      : { key: 'admit', label: 'Admit IPD', icon: 'bed', color: colors.purple, onPress: () => push('/ipd-admission') },
+    summary
+      ? { key: 'summary', label: 'Summary', icon: 'document-text', color: colors.success, onPress: () => push('/discharge-summary') }
+      : { key: 'book', label: 'Appointment', icon: 'calendar', color: colors.teal, onPress: () => push('/book-appointment') },
+  ];
+
+  const closeMenuThen = (fn: () => void) => {
+    setMenuOpen(false);
+    // Let the sheet slide away before a new screen / share sheet opens over it.
+    setTimeout(fn, 240);
+  };
+
+  const menu: MenuItem[] = [
+    { key: 'book', icon: 'calendar-outline', label: 'Book appointment', sub: 'OPD or follow-up visit', color: colors.teal, run: () => push('/book-appointment') },
+    { key: 'lab', icon: 'flask-outline', label: 'Order lab tests', sub: 'CBC, LFT, KFT, HbA1c…', color: colors.secondary, run: () => push('/lab') },
+    { key: 'scan', icon: 'scan-outline', label: 'Order scan', sub: 'X-ray, CT, MRI, ultrasound', color: colors.purple, run: () => push('/radiology') },
+    { key: 'invoice', icon: 'receipt-outline', label: 'Create invoice', sub: outstanding > 0 ? `${formatCurrency(outstanding)} currently due` : 'Bill a service', color: colors.warning, run: () => push('/create-invoice') },
+    { key: 'copilot', icon: 'sparkles-outline', label: 'Open in Doctor Copilot', sub: 'AI summary, lab trends, med review', color: colors.primary, run: () => push('/doctor-copilot') },
+    { key: 'docs', icon: 'folder-open-outline', label: 'Documents', sub: plural(documents.length, 'file') + ' on record', color: colors.info, run: () => push('/documents') },
+    { key: 'share', icon: 'share-social-outline', label: 'Share summary PDF', sub: 'Allergies, problems, meds, labs', color: colors.success, run: shareSummary },
+    { key: 'call', icon: 'call-outline', label: 'Call patient', sub: patient.phone, color: colors.success, run: callPatient },
+  ];
+
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollY.current = e.nativeEvent.contentOffset.y;
+  };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <Header
         title="Patient Details"
-        showBack
+        subtitle={patient.uhid}
         rightAction={
-          <TouchableOpacity style={styles.headerBtn}>
-            <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
-          </TouchableOpacity>
+          exporting ? (
+            <View style={styles.headerBtn}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => setMenuOpen(true)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel="More patient actions"
+            >
+              <Ionicons name="ellipsis-vertical" size={20} color={colors.text} />
+            </TouchableOpacity>
+          )
         }
       />
 
       <ScrollView
+        ref={scrollRef}
+        stickyHeaderIndices={[1]}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        onScroll={onScroll}
+        scrollEventThrottle={32}
+        contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
       >
-        {/* Profile Card Header */}
-        <View style={styles.profileCard}>
-          <View style={styles.profileTopRow}>
-            <Avatar name={patient.name} size={64} />
-            <View style={styles.profileDetails}>
-              <View style={styles.nameBadgeRow}>
-                <Text style={styles.patientName}>{patient.name}</Text>
-                <Badge
-                  label={patient.status}
-                  variant={
-                    patient.status === 'Active'
-                      ? 'active'
-                      : patient.status === 'Admitted'
-                      ? 'admitted'
-                      : 'discharged'
-                  }
-                  size="sm"
-                />
+        <View style={styles.top}>
+          <FadeInView>
+            <View style={styles.profileCard}>
+              <View style={styles.profileRow}>
+                <Avatar name={patient.name} size={64} />
+                <View style={styles.profileText}>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.name} numberOfLines={2}>
+                      {patient.name}
+                    </Text>
+                    <Badge label={patient.status} variant={statusVariant(patient.status)} size="sm" />
+                  </View>
+                  <Text style={styles.uhid}>UHID: {patient.uhid}</Text>
+                  {admitted && (
+                    <View style={styles.roomRow}>
+                      <Ionicons name="bed-outline" size={13} color={colors.purple} />
+                      <Text style={styles.roomText} numberOfLines={1}>
+                        {patient.room ?? 'Bed pending'}
+                        {day ? ` • Day ${day}` : ''}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </View>
-              <Text style={styles.uhidText}>UHID: {patient.uhid}</Text>
-              {patient.room && <Text style={styles.roomText}>{patient.room}</Text>}
+              <View style={styles.pills}>
+                <View style={styles.pill}>
+                  <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.pillText}>{patient.age} Years</Text>
+                </View>
+                <View style={styles.pill}>
+                  <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
+                  <Text style={styles.pillText}>{patient.gender}</Text>
+                </View>
+                <View style={styles.pill}>
+                  <Ionicons name="water-outline" size={14} color={colors.danger} />
+                  <Text style={styles.pillText}>{patient.bloodGroup}</Text>
+                </View>
+                <TouchableOpacity style={styles.pill} onPress={callPatient} accessibilityRole="button" accessibilityLabel={`Call ${patient.phone}`}>
+                  <Ionicons name="call-outline" size={14} color={colors.primary} />
+                  <Text style={[styles.pillText, { color: colors.primary }]}>{patient.phone}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </FadeInView>
 
-          {/* Quick Demographics Badges */}
-          <View style={styles.quickBadgesRow}>
-            <View style={styles.demoBadge}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.demoBadgeText}>{patient.age} Years</Text>
-            </View>
-            <View style={styles.demoBadge}>
-              <Ionicons name="person-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.demoBadgeText}>{patient.gender}</Text>
-            </View>
-            <View style={styles.demoBadge}>
-              <Ionicons name="call-outline" size={14} color={colors.textSecondary} />
-              <Text style={styles.demoBadgeText}>{patient.phone}</Text>
-            </View>
-          </View>
-        </View>
+          <FadeInView delay={60}>
+            <AllergyBanner allergies={profile?.allergies} showNone={false} style={styles.allergy} />
+          </FadeInView>
 
-        {/* Action Buttons Row */}
-        <View style={styles.actionButtonsRow}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() =>
-              router.push({
-                pathname: '/opd-consultation',
-                params: { patientId: patient.id },
-              })
-            }
-          >
-            <Ionicons name="medkit" size={18} color={colors.primary} />
-            <Text style={styles.actionBtnText}>Consultation</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() =>
-              router.push({
-                pathname: '/ipd-admission',
-                params: { patientId: patient.id },
-              })
-            }
-          >
-            <Ionicons name="bed" size={18} color="#8B5CF6" />
-            <Text style={styles.actionBtnText}>Admit IPD</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() =>
-              router.push({
-                pathname: '/discharge-summary',
-                params: { patientId: patient.id },
-              })
-            }
-          >
-            <Ionicons name="document-text" size={18} color="#10B981" />
-            <Text style={styles.actionBtnText}>Summary</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Tab Selector */}
-        <View style={styles.tabContainer}>
-          {(['Overview', 'Medical History', 'Visits', 'Reports'] as const).map((tab) => {
-            const isActive = activeTab === tab;
-            return (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={[styles.tabItem, isActive && styles.tabItemActive]}
+          <FadeInView delay={110} style={styles.actions}>
+            {quickActions.map((a) => (
+              <PressableScale
+                key={a.key}
+                style={styles.actionBtn}
+                onPress={a.onPress}
+                haptic
+                accessibilityRole="button"
+                accessibilityLabel={a.label}
               >
-                <Text style={[styles.tabText, isActive && styles.tabTextActive]}>
-                  {tab}
+                <View style={[styles.actionIcon, { backgroundColor: a.color + '16' }]}>
+                  <Ionicons name={a.icon} size={18} color={a.color} />
+                </View>
+                <Text style={styles.actionText} numberOfLines={1}>
+                  {a.label}
                 </Text>
-              </TouchableOpacity>
-            );
-          })}
+              </PressableScale>
+            ))}
+          </FadeInView>
         </View>
 
-        {/* Tab Content */}
-        {activeTab === 'Overview' && (
-          <View style={styles.tabSection}>
-            <View style={styles.infoSectionCard}>
-              <Text style={styles.cardHeaderTitle}>Personal Information</Text>
+        <View
+          style={styles.tabsSticky}
+          onLayout={(e) => {
+            tabsY.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <AnimatedTabs tabs={TABS} active={tab} onChange={changeTab} />
+        </View>
 
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconWrapper}>
-                  <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                </View>
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Date of Birth</Text>
-                  <Text style={styles.infoValue}>{patient.dob}</Text>
-                </View>
-              </View>
-
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconWrapper}>
-                  <Ionicons name="location-outline" size={18} color={colors.primary} />
-                </View>
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Address</Text>
-                  <Text style={styles.infoValue}>{patient.address}</Text>
-                </View>
-              </View>
-
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconWrapper}>
-                  <Ionicons name="water-outline" size={18} color={colors.danger} />
-                </View>
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Blood Group</Text>
-                  <Text style={styles.infoValue}>{patient.bloodGroup}</Text>
-                </View>
-              </View>
-
-              <View style={styles.infoRow}>
-                <View style={styles.infoIconWrapper}>
-                  <Ionicons name="shield-checkmark-outline" size={18} color={colors.success} />
-                </View>
-                <View style={styles.infoCol}>
-                  <Text style={styles.infoLabel}>Insurance</Text>
-                  <Text style={styles.infoValue}>{patient.insurance}</Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.infoSectionCard}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.cardHeaderTitle}>Recent Visits</Text>
-                <TouchableOpacity onPress={() => setActiveTab('Visits')}>
-                  <Text style={styles.viewAllText}>View All ›</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.visitItem}>
-                <View style={styles.visitIconCircle}>
-                  <Ionicons name="document-text-outline" size={18} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.visitTitle}>OPD - General Medicine</Text>
-                  <Text style={styles.visitSubtitle}>22 Sep 2025 • Dr. Priya Menon</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-              </View>
-            </View>
-          </View>
-        )}
-
-        {activeTab === 'Medical History' && (
-          <View style={styles.tabSection}>
-            <View style={styles.infoSectionCard}>
-              <Text style={styles.cardHeaderTitle}>Past Medical History</Text>
-              <Text style={styles.historyParagraph}>
-                • Hypertension diagnosed 2 years ago; well managed on regular medication.
-              </Text>
-              <Text style={styles.historyParagraph}>
-                • No known drug allergies (NKDA).
-              </Text>
-              <Text style={styles.historyParagraph}>
-                • Previous surgery: Appendectomy (2018), no postoperative complications.
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {activeTab === 'Visits' && (
-          <View style={styles.tabSection}>
-            <View style={styles.infoSectionCard}>
-              <Text style={styles.cardHeaderTitle}>Consultations & Visits ({patientAppointments.length})</Text>
-              {patientAppointments.map((apt) => (
-                <View key={apt.id} style={styles.visitItem}>
-                  <View style={styles.visitIconCircle}>
-                    <Ionicons name="medkit-outline" size={18} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.visitTitle}>{apt.department} ({apt.type})</Text>
-                    <Text style={styles.visitSubtitle}>
-                      {apt.date} • {apt.doctorName}
-                    </Text>
-                  </View>
-                  <Badge label={apt.status} variant="confirmed" size="sm" />
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {activeTab === 'Reports' && (
-          <View style={styles.tabSection}>
-            <View style={styles.infoSectionCard}>
-              <Text style={styles.cardHeaderTitle}>Invoices & Bills ({patientInvoices.length})</Text>
-              {patientInvoices.map((inv) => (
-                <TouchableOpacity
-                  key={inv.id}
-                  style={styles.visitItem}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/receipt/[id]',
-                      params: { id: inv.id },
-                    })
-                  }
-                >
-                  <View style={[styles.visitIconCircle, { backgroundColor: '#ECFDF5' }]}>
-                    <Ionicons name="receipt-outline" size={18} color={colors.success} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.visitTitle}>{inv.title}</Text>
-                    <Text style={styles.visitSubtitle}>
-                      {inv.invoiceNo} • {inv.date}
-                    </Text>
-                  </View>
-                  <Text style={styles.invoiceAmount}>₹{inv.amount.toLocaleString()}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
+        <View style={styles.tabBody}>
+          <FadeInView key={tab} offset={8} duration={240}>
+            {tab === 'Overview' && (
+              <OverviewTab
+                patient={patient}
+                profile={profile}
+                vitals={vitals}
+                visits={visits}
+                appointments={appointments}
+                hasSummary={!!summary}
+                onViewVisits={() => changeTab('Visits')}
+                onCall={callPatient}
+                onOpenSummary={() => push('/discharge-summary')}
+                onOpenCopilot={() => push('/doctor-copilot', { tab: 'Summarize' })}
+                onOpenAppointments={(date) => router.push({ pathname: '/appointments', params: { date } })}
+              />
+            )}
+            {tab === 'Medical History' && <HistoryTab profile={profile} onStartConsult={() => push('/opd-consultation')} />}
+            {tab === 'Visits' && (
+              <VisitsTab
+                visits={visits}
+                appointments={appointments}
+                notes={notes}
+                onBook={() => push('/book-appointment')}
+                onStartConsult={(appointmentId) => push('/opd-consultation', appointmentId ? { appointmentId } : {})}
+                onOpenAppointments={(date) => router.push({ pathname: '/appointments', params: { date } })}
+              />
+            )}
+            {tab === 'Reports' && (
+              <ReportsTab
+                ready={reportsReady}
+                labResults={labResults}
+                labOrders={labOrders}
+                radiology={radiology}
+                invoices={invoices}
+                documents={documents}
+                onOpenCopilot={() => push('/doctor-copilot', { tab: 'Reports' })}
+                onOrderLab={() => push('/lab')}
+                onOrderScan={() => push('/radiology')}
+                onOpenInvoice={(invoiceId) => router.push({ pathname: '/receipt/[id]', params: { id: invoiceId } })}
+                onOpenDocuments={() => push('/documents')}
+              />
+            )}
+          </FadeInView>
+        </View>
       </ScrollView>
+
+      <BottomSheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="Patient Actions" subtitle={`${patient.name} • ${patient.uhid}`}>
+        {menu.map((m, i) => (
+          <TouchableOpacity
+            key={m.key}
+            style={[styles.menuRow, i < menu.length - 1 && styles.menuDivider]}
+            onPress={() => closeMenuThen(m.run)}
+            accessibilityRole="button"
+            accessibilityLabel={m.label}
+          >
+            <View style={[styles.menuIcon, { backgroundColor: m.color + '18' }]}>
+              <Ionicons name={m.icon} size={19} color={m.color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.menuLabel}>{m.label}</Text>
+              {!!m.sub && (
+                <Text style={styles.menuSub} numberOfLines={1}>
+                  {m.sub}
+                </Text>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        ))}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
+  safeArea: { flex: 1, backgroundColor: colors.background },
   headerBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrollContent: {
+  top: {
     paddingHorizontal: spacing.base,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xxl,
+    backgroundColor: colors.background,
   },
   profileCard: {
     backgroundColor: '#FFFFFF',
@@ -311,202 +434,83 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...shadows.sm,
-    marginBottom: spacing.base,
   },
-  profileTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.md,
-  },
-  profileDetails: {
+  profileRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  profileText: { flex: 1 },
+  nameRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm },
+  name: {
     flex: 1,
-  },
-  nameBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  patientName: {
-    fontSize: typography.fontSizes.lg,
+    fontSize: typography.fontSizes.lg + 1,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
   },
-  uhidText: {
+  uhid: {
     fontSize: typography.fontSizes.xs + 1,
     color: colors.textSecondary,
     fontWeight: typography.fontWeights.medium,
-    marginTop: 2,
+    marginTop: 3,
   },
-  roomText: {
-    fontSize: typography.fontSizes.xs,
-    color: colors.primary,
-    fontWeight: typography.fontWeights.semiBold,
-    marginTop: 2,
-  },
-  quickBadgesRow: {
+  roomRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  roomText: { flex: 1, fontSize: typography.fontSizes.xs + 1, color: colors.purple, fontWeight: typography.fontWeights.semiBold },
+  pills: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
     paddingTop: spacing.md,
+    marginTop: spacing.md,
   },
-  demoBadge: {
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
     backgroundColor: colors.cardMuted,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    minHeight: 32,
     borderRadius: radius.sm,
   },
-  demoBadgeText: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: typography.fontWeights.medium,
-  },
-  actionButtonsRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.base,
-  },
+  pillText: { fontSize: 12, color: colors.textSecondary, fontWeight: typography.fontWeights.semiBold },
+  allergy: { marginTop: spacing.md },
+  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.md },
   actionBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: colors.borderLight,
-    paddingVertical: 10,
+    paddingVertical: spacing.md,
     borderRadius: radius.md,
+    minHeight: 72,
     ...shadows.sm,
   },
-  actionBtnText: {
-    fontSize: 12,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.md,
-    padding: 4,
-    marginBottom: spacing.base,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.sm,
-  },
-  tabItemActive: {
-    backgroundColor: colors.primary,
-  },
-  tabText: {
-    fontSize: 12,
-    fontWeight: typography.fontWeights.medium,
-    color: colors.textSecondary,
-  },
-  tabTextActive: {
-    color: '#FFFFFF',
-    fontWeight: typography.fontWeights.bold,
-  },
-  tabSection: {
-    gap: spacing.md,
-  },
-  infoSectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.lg,
-    padding: spacing.base,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.sm,
-  },
-  cardHeaderTitle: {
-    fontSize: typography.fontSizes.sm + 1,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-    marginBottom: spacing.md,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  viewAllText: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: typography.fontWeights.semiBold,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-    gap: spacing.md,
-  },
-  infoIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.cardMuted,
+  actionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoCol: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-  infoValue: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-    marginTop: 2,
-  },
-  visitItem: {
+  actionText: { fontSize: 12, fontWeight: typography.fontWeights.bold, color: colors.text },
+  tabsSticky: { backgroundColor: '#FFFFFF' },
+  tabBody: { paddingHorizontal: spacing.base, paddingTop: spacing.base },
+  menuRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
+    paddingVertical: spacing.md,
+    minHeight: 56,
   },
-  visitIconCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primaryLight,
+  menuDivider: { borderBottomWidth: 1, borderBottomColor: colors.borderLight },
+  menuIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  visitTitle: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.text,
-  },
-  visitSubtitle: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  invoiceAmount: {
-    fontSize: typography.fontSizes.sm,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.primary,
-  },
-  historyParagraph: {
-    fontSize: 13,
-    color: colors.text,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
+  menuLabel: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.semiBold, color: colors.text },
+  menuSub: { fontSize: typography.fontSizes.xs + 1, color: colors.textSecondary, marginTop: 1 },
 });

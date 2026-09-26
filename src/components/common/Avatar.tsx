@@ -28,12 +28,16 @@ export const Avatar: React.FC<AvatarProps> = ({
   style,
 }) => {
   const getInitials = (text: string) => {
-    if (!text) return 'CS';
-    const parts = text.replace(/^(Dr\.|Mr\.|Mrs\.|Ms\.)\s*/i, '').trim().split(' ');
+    const parts = (text || '')
+      .replace(/^(Dr|Mr|Mrs|Ms|Nurse)\.?\s+/i, '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!parts.length) return 'CS';
     if (parts.length >= 2) {
       return (parts[0][0] + parts[1][0]).toUpperCase();
     }
-    return text.substring(0, 2).toUpperCase();
+    return parts[0].substring(0, 2).toUpperCase();
   };
 
   const getColorIndex = (text: string) => {

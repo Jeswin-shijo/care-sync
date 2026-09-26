@@ -2,10 +2,40 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
 import { HOSPITAL_CONFIG } from '../constants/config';
-import { numberToWords } from './formatters';
+import { formatCurrency, numberToWords } from './formatters';
+
+/** A4 in PostScript points (expo-print defaults to US Letter). */
+const A4 = { width: 595, height: 842 };
+
+export const escapeHtml = (value: unknown): string =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+export interface HospitalHeader {
+  name: string;
+  address: string;
+  phone: string;
+  email?: string;
+  gstin: string;
+  regNo?: string;
+}
+
+const defaultHospital: HospitalHeader = {
+  name: HOSPITAL_CONFIG.name,
+  address: HOSPITAL_CONFIG.address,
+  phone: HOSPITAL_CONFIG.phone,
+  email: HOSPITAL_CONFIG.email,
+  gstin: HOSPITAL_CONFIG.gstin,
+  regNo: HOSPITAL_CONFIG.regNo,
+};
 
 export interface ReceiptPrintData {
   receiptNo: string;
+  /** Heading printed on the document, e.g. "Registration Receipt". */
   receiptType: string;
   date: string;
   time?: string;
@@ -17,236 +47,194 @@ export interface ReceiptPrintData {
   doctorName?: string;
   department?: string;
   room?: string;
+  /** Pending invoices print as a bill with "Amount Due", never as a paid receipt. */
+  status?: 'Paid' | 'Pending';
+  insuranceCovered?: number;
+  signatory?: string;
+  footer?: string;
+  hospital?: HospitalHeader;
 }
 
+const baseStyles = `
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; margin: 0; padding: 28px; }
+  .sheet { max-width: 560px; margin: 0 auto; }
+  .brand { text-align: center; border-bottom: 2px dashed #CBD5E1; padding-bottom: 14px; margin-bottom: 16px; }
+  .logo { display: inline-block; width: 38px; height: 38px; border-radius: 10px; background: #1E6BFF; color: #fff; font-size: 26px; line-height: 38px; font-weight: 700; }
+  .brand h1 { font-size: 19px; margin: 8px 0 2px; }
+  .muted { color: #64748B; font-size: 11px; margin: 1px 0; }
+  .title { text-align: center; margin: 6px 0 16px; }
+  .title span { display: inline-block; background: #EFF6FF; color: #1E6BFF; border-radius: 6px; padding: 5px 14px; font-weight: 700; letter-spacing: 1.2px; font-size: 12px; text-transform: uppercase; }
+  .stamp { display: inline-block; margin-left: 8px; border: 2px solid; border-radius: 6px; padding: 2px 8px; font-weight: 800; font-size: 11px; letter-spacing: 1px; }
+  .paid { color: #059669; border-color: #059669; }
+  .due { color: #DC2626; border-color: #DC2626; }
+  table.meta { width: 100%; font-size: 12.5px; border-collapse: collapse; }
+  table.meta td { padding: 4px 0; }
+  table.meta td:last-child { text-align: right; font-weight: 600; }
+  table.items { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 12.5px; }
+  table.items th { text-align: left; color: #64748B; font-weight: 600; border-bottom: 2px solid #E2E8F0; padding: 7px 4px; }
+  table.items td { border-bottom: 1px solid #F1F5F9; padding: 7px 4px; }
+  .num { text-align: right; }
+  .center { text-align: center; }
+  .total { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 14px; margin-top: 8px; }
+  .total .row { display: flex; justify-content: space-between; font-size: 13px; margin: 3px 0; }
+  .total .grand { font-size: 17px; font-weight: 800; color: #1E6BFF; }
+  .words { font-size: 11px; color: #64748B; font-style: italic; margin-top: 6px; }
+  .sign { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 34px; font-size: 11px; color: #64748B; }
+  .sign .who { text-align: center; }
+  .sign .who b { display: block; color: #1E3A8A; font-size: 14px; font-style: italic; border-bottom: 1px solid #94A3B8; padding-bottom: 3px; margin-bottom: 3px; }
+  .foot { text-align: center; font-size: 10px; color: #94A3B8; margin-top: 22px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: #1E6BFF; margin: 18px 0 6px; border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; }
+  p { font-size: 12.5px; line-height: 1.55; margin: 4px 0; }
+  ul { margin: 4px 0; padding-left: 18px; font-size: 12.5px; line-height: 1.55; }
+  .flag { color: #DC2626; font-weight: 700; }
+`;
+
+const brandHtml = (h: HospitalHeader) => `
+  <div class="brand">
+    <div class="logo">+</div>
+    <h1>${escapeHtml(h.name)}</h1>
+    <p class="muted">${escapeHtml(h.address)} • ${escapeHtml(h.phone)}</p>
+    <p class="muted">GSTIN: ${escapeHtml(h.gstin)}${h.regNo ? ` • Reg. No: ${escapeHtml(h.regNo)}` : ''}</p>
+  </div>`;
+
 export const generateReceiptHtml = (data: ReceiptPrintData): string => {
-  const itemsHtml = data.items && data.items.length > 0
-    ? `
-      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
-        <thead>
-          <tr style="border-bottom: 2px solid #E2E8F0; text-align: left; font-size: 13px; color: #64748B;">
-            <th style="padding: 8px 4px;">Particulars</th>
-            ${data.items.some(i => i.qty) ? '<th style="padding: 8px 4px; text-align: center;">Qty</th>' : ''}
-            ${data.items.some(i => i.rate) ? '<th style="padding: 8px 4px; text-align: right;">Rate</th>' : ''}
-            <th style="padding: 8px 4px; text-align: right;">Amount (₹)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${data.items.map(item => `
-            <tr style="border-bottom: 1px solid #F1F5F9; font-size: 13px;">
-              <td style="padding: 8px 4px; color: #1E293B;">${item.description}</td>
-              ${data.items?.some(i => i.qty) ? `<td style="padding: 8px 4px; text-align: center; color: #64748B;">${item.qty ?? 1}</td>` : ''}
-              ${data.items?.some(i => i.rate) ? `<td style="padding: 8px 4px; text-align: right; color: #64748B;">₹${(item.rate ?? item.amount).toLocaleString('en-IN')}</td>` : ''}
-              <td style="padding: 8px 4px; text-align: right; font-weight: 600; color: #0F172A;">₹${item.amount.toLocaleString('en-IN')}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `
-    : '';
-
-  return `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-        <style>
-          @page { size: auto; margin: 15mm; }
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            color: #0F172A;
-            background-color: #FFFFFF;
-            padding: 24px;
-            margin: 0;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-          }
-          .receipt-box {
-            border: 1px solid #E2E8F0;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-          }
-          .header {
-            text-align: center;
-            border-bottom: 1px dashed #CBD5E1;
-            padding-bottom: 16px;
-            margin-bottom: 16px;
-          }
-          .cross-icon {
-            display: inline-block;
-            background-color: #1E6BFF;
-            color: white;
-            font-weight: bold;
-            font-size: 20px;
-            width: 36px;
-            height: 36px;
-            line-height: 36px;
-            border-radius: 8px;
-            margin-bottom: 8px;
-          }
-          .hospital-name {
-            font-size: 18px;
-            font-weight: bold;
-            color: #1E293B;
-            margin: 0 0 4px 0;
-          }
-          .hospital-sub {
-            font-size: 11px;
-            color: #64748B;
-            margin: 0;
-            line-height: 1.4;
-          }
-          .receipt-title {
-            text-align: center;
-            font-size: 14px;
-            font-weight: 700;
-            letter-spacing: 1px;
-            color: #1E6BFF;
-            background: #EFF6FF;
-            padding: 6px 12px;
-            border-radius: 6px;
-            display: inline-block;
-            margin: 8px auto 16px auto;
-          }
-          .grid-info {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 16px;
-            font-size: 13px;
-          }
-          .info-col {
-            flex: 1;
-          }
-          .info-row {
-            margin-bottom: 6px;
-          }
-          .label {
-            color: #64748B;
-            font-size: 12px;
-          }
-          .value {
-            font-weight: 600;
-            color: #1E293B;
-          }
-          .amount-box {
-            background-color: #F8FAFC;
-            border-radius: 8px;
-            padding: 12px 16px;
-            margin-top: 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          .amount-paid {
-            font-size: 20px;
-            font-weight: 700;
-            color: #1E6BFF;
-          }
-          .amount-words {
-            font-size: 11px;
-            font-style: italic;
-            color: #64748B;
-            margin-top: 8px;
-          }
-          .footer {
-            margin-top: 32px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-          }
-          .signature-box {
-            text-align: center;
-            width: 140px;
-          }
-          .sign-line {
-            border-top: 1px solid #94A3B8;
-            margin-top: 30px;
-            font-size: 11px;
-            color: #64748B;
-            padding-top: 4px;
-          }
-          .qr-placeholder {
-            font-size: 11px;
-            color: #94A3B8;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="receipt-box">
-          <div class="header">
-            <div class="cross-icon">+</div>
-            <div class="hospital-name">${HOSPITAL_CONFIG.name}</div>
-            <div class="hospital-sub">${HOSPITAL_CONFIG.address}</div>
-            <div class="hospital-sub">GSTIN: ${HOSPITAL_CONFIG.gstin} | Phone: ${HOSPITAL_CONFIG.phone}</div>
-          </div>
-
-          <div style="text-align: center;">
-            <div class="receipt-title">${data.receiptType.toUpperCase()}</div>
-          </div>
-
-          <div class="grid-info">
-            <div class="info-col">
-              <div class="info-row"><span class="label">Receipt No: </span><span class="value">${data.receiptNo}</span></div>
-              <div class="info-row"><span class="label">Patient Name: </span><span class="value">${data.patientName}</span></div>
-              <div class="info-row"><span class="label">UHID: </span><span class="value">${data.uhid}</span></div>
-              ${data.doctorName ? `<div class="info-row"><span class="label">Doctor: </span><span class="value">${data.doctorName}</span></div>` : ''}
-            </div>
-            <div class="info-col" style="text-align: right;">
-              <div class="info-row"><span class="label">Date: </span><span class="value">${data.date}</span></div>
-              ${data.time ? `<div class="info-row"><span class="label">Time: </span><span class="value">${data.time}</span></div>` : ''}
-              <div class="info-row"><span class="label">Payment Mode: </span><span class="value">${data.paymentMode}</span></div>
-              ${data.department ? `<div class="info-row"><span class="label">Department: </span><span class="value">${data.department}</span></div>` : ''}
-            </div>
-          </div>
-
-          ${itemsHtml}
-
-          <div class="amount-box">
-            <div>
-              <div class="label">Total Amount Paid</div>
-              <div class="amount-words">${numberToWords(data.amount)}</div>
-            </div>
-            <div class="amount-paid">₹${data.amount.toLocaleString('en-IN')}</div>
-          </div>
-
-          <div class="footer">
-            <div class="qr-placeholder">
-              CareSync SaaS • Electronic Verification Valid
-            </div>
-            <div class="signature-box">
-              <div style="font-family: 'Brush Script MT', cursive; font-size: 16px; color: #1E293B;">Dr. Priya M.</div>
-              <div class="sign-line">Authorized Signatory</div>
-            </div>
-          </div>
-          <div style="text-align: center; margin-top: 16px; font-size: 11px; color: #94A3B8;">
-            Thank you for choosing ${HOSPITAL_CONFIG.name}
-          </div>
-        </div>
-      </body>
-    </html>
-  `;
+  const h = data.hospital ?? defaultHospital;
+  const paid = (data.status ?? 'Paid') === 'Paid';
+  const items = data.items?.length ? data.items : [{ description: data.receiptType, qty: 1, amount: data.amount }];
+  const showRate = items.some((i) => typeof i.rate === 'number');
+  const gross = items.filter((i) => i.amount > 0).reduce((n, i) => n + i.amount, 0);
+  const meta: Array<[string, string | undefined]> = [
+    [paid ? 'Receipt No' : 'Bill No', data.receiptNo],
+    ['Date & Time', `${data.date}${data.time ? ` • ${data.time}` : ''}`],
+    ['Patient Name', data.patientName],
+    ['UHID', data.uhid],
+    ['Consultant', data.doctorName],
+    ['Department', data.department],
+    ['Room / Bed', data.room],
+    [paid ? 'Payment Mode' : 'Status', paid ? data.paymentMode : 'Payment pending'],
+  ];
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${baseStyles}</style></head><body><div class="sheet">
+    ${brandHtml(h)}
+    <div class="title"><span>${escapeHtml(data.receiptType)}</span><span class="stamp ${paid ? 'paid' : 'due'}">${paid ? 'PAID' : 'DUE'}</span></div>
+    <table class="meta">${meta
+      .filter(([, v]) => v)
+      .map(([k, v]) => `<tr><td class="muted">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`)
+      .join('')}</table>
+    <table class="items">
+      <thead><tr><th>Particulars</th><th class="center">Qty</th>${showRate ? '<th class="num">Rate</th>' : ''}<th class="num">Amount</th></tr></thead>
+      <tbody>${items
+        .map(
+          (i) =>
+            `<tr><td>${escapeHtml(i.description)}</td><td class="center">${i.qty ?? 1}</td>${
+              showRate ? `<td class="num">${typeof i.rate === 'number' ? formatCurrency(i.rate, { decimals: 2 }) : '—'}</td>` : ''
+            }<td class="num">${formatCurrency(i.amount, { decimals: 2 })}</td></tr>`
+        )
+        .join('')}</tbody>
+    </table>
+    <div class="total">
+      ${data.insuranceCovered ? `<div class="row"><span>Gross charges</span><span>${formatCurrency(gross, { decimals: 2 })}</span></div><div class="row"><span>Insurance approved</span><span>- ${formatCurrency(data.insuranceCovered, { decimals: 2 })}</span></div>` : ''}
+      <div class="row grand"><span>${paid ? 'Amount Paid' : 'Amount Due'}</span><span>${formatCurrency(data.amount, { decimals: 2 })}</span></div>
+      <div class="words">${escapeHtml(numberToWords(data.amount))}</div>
+    </div>
+    <div class="sign">
+      <div>For ${escapeHtml(h.name)}</div>
+      <div class="who"><b>${escapeHtml(data.signatory ?? 'Billing Desk')}</b>Authorized Signatory</div>
+    </div>
+    <div class="foot">${escapeHtml(data.footer ?? `Thank you for choosing ${h.name}`)} • Computer-generated document</div>
+  </div></body></html>`;
 };
 
-export const printOrShareReceipt = async (data: ReceiptPrintData, action: 'print' | 'share' | 'download' = 'download') => {
+// -------------------------------------------------------------
+// Generic clinical / report documents
+// -------------------------------------------------------------
+export interface DocumentSection {
+  heading: string;
+  rows?: Array<[string, string]>;
+  paragraphs?: string[];
+  bullets?: string[];
+  table?: { columns: string[]; rows: string[][]; alignRight?: number[] };
+}
+
+export interface DocumentSpec {
+  title: string;
+  subtitle?: string;
+  meta?: Array<[string, string]>;
+  sections: DocumentSection[];
+  signatory?: string;
+  signatoryRole?: string;
+  footer?: string;
+  hospital?: HospitalHeader;
+}
+
+export const generateDocumentHtml = (doc: DocumentSpec): string => {
+  const h = doc.hospital ?? defaultHospital;
+  const section = (s: DocumentSection) => `
+    <h2>${escapeHtml(s.heading)}</h2>
+    ${s.rows ? `<table class="meta">${s.rows.map(([k, v]) => `<tr><td class="muted">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table>` : ''}
+    ${(s.paragraphs ?? []).map((p) => `<p>${escapeHtml(p)}</p>`).join('')}
+    ${s.bullets?.length ? `<ul>${s.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : ''}
+    ${
+      s.table
+        ? `<table class="items"><thead><tr>${s.table.columns
+            .map((c, i) => `<th class="${s.table!.alignRight?.includes(i) ? 'num' : ''}">${escapeHtml(c)}</th>`)
+            .join('')}</tr></thead><tbody>${s.table.rows
+            .map(
+              (r) =>
+                `<tr>${r
+                  .map((cell, i) => {
+                    const flagged = /\((High|Low)\)|↑|↓|abnormal/i.test(cell);
+                    return `<td class="${s.table!.alignRight?.includes(i) ? 'num' : ''} ${flagged ? 'flag' : ''}">${escapeHtml(cell)}</td>`;
+                  })
+                  .join('')}</tr>`
+            )
+            .join('')}</tbody></table>`
+        : ''
+    }`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8" /><style>${baseStyles}</style></head><body><div class="sheet">
+    ${brandHtml(h)}
+    <div class="title"><span>${escapeHtml(doc.title)}</span></div>
+    ${doc.subtitle ? `<p class="muted" style="text-align:center">${escapeHtml(doc.subtitle)}</p>` : ''}
+    ${doc.meta ? `<table class="meta">${doc.meta.map(([k, v]) => `<tr><td class="muted">${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table>` : ''}
+    ${doc.sections.map(section).join('')}
+    ${doc.signatory ? `<div class="sign"><div>For ${escapeHtml(h.name)}</div><div class="who"><b>${escapeHtml(doc.signatory)}</b>${escapeHtml(doc.signatoryRole ?? 'Authorized Signatory')}</div></div>` : ''}
+    <div class="foot">${escapeHtml(doc.footer ?? 'Computer-generated document • CareSync Hospital Management System')}</div>
+  </div></body></html>`;
+};
+
+export type ExportAction = 'print' | 'share' | 'download';
+
+/**
+ * Prints, or renders to an A4 PDF and opens the share sheet (Save to Files /
+ * Drive / WhatsApp / Email). Returns true when the system dialog opened.
+ */
+export const exportHtml = async (html: string, fileTitle: string, action: ExportAction): Promise<boolean> => {
   try {
-    const html = generateReceiptHtml(data);
     if (action === 'print') {
-      await Print.printAsync({ html });
-    } else {
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          UTI: '.pdf',
-          mimeType: 'application/pdf',
-          dialogTitle: `${data.receiptNo}.pdf`,
-        });
-      } else {
-        Alert.alert('PDF Generated', `Receipt saved to: ${uri}`);
-      }
+      await Print.printAsync({ html, ...A4 });
+      return true;
     }
+    const { uri } = await Print.printToFileAsync({ html, ...A4 });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        UTI: 'com.adobe.pdf',
+        mimeType: 'application/pdf',
+        dialogTitle: action === 'download' ? `Save ${fileTitle}` : `Share ${fileTitle}`,
+      });
+      return true;
+    }
+    Alert.alert('PDF ready', 'Sharing is not available on this device.');
+    return false;
   } catch (error: any) {
-    Alert.alert('Error', error.message || 'Failed to process document');
+    // iOS rejects printAsync when the user closes the print sheet — that's a cancel, not an error.
+    if (action === 'print' && Platform.OS === 'ios') return false;
+    Alert.alert('Could not create document', error?.message || 'Please try again.');
+    return false;
   }
 };
+
+export const printOrShareReceipt = (data: ReceiptPrintData, action: ExportAction = 'download') =>
+  exportHtml(generateReceiptHtml(data), `${data.receiptNo}.pdf`, action);
+
+export const exportDocument = (doc: DocumentSpec, fileTitle: string, action: ExportAction = 'share') =>
+  exportHtml(generateDocumentHtml(doc), fileTitle, action);

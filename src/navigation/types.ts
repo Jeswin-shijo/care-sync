@@ -32,4 +32,10 @@ export type RootStackParamList = {
   Notifications: undefined;
   Settings: undefined;
   MoreFeatures: undefined;
+  DoctorCopilot: undefined;
+  NursePortal: undefined;
+  LabPortal: undefined;
+  PharmacyReview: undefined;
+  PatientPortal: undefined;
 };
+

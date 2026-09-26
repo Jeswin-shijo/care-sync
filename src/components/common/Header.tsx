@@ -41,6 +41,9 @@ export const Header: React.FC<HeaderProps> = ({
       onBackPress();
     } else if (router.canGoBack()) {
       router.back();
+    } else {
+      // Opened from a deep link / notification with no history — go home.
+      router.replace('/(tabs)');
     }
   };
 
@@ -63,6 +66,8 @@ export const Header: React.FC<HeaderProps> = ({
             onPress={handleBack}
             activeOpacity={0.7}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
           >
             <Ionicons name="chevron-back" size={22} color={colors.text} />
           </TouchableOpacity>
@@ -71,12 +76,12 @@ export const Header: React.FC<HeaderProps> = ({
           <View style={styles.titleComponentWrapper}>{titleComponent}</View>
         ) : (
           <View style={styles.titleContainer}>
-            {title && (
+            {!!title && (
               <Text style={styles.title} numberOfLines={1}>
                 {title}
               </Text>
             )}
-            {subtitle && (
+            {!!subtitle && (
               <Text style={styles.subtitle} numberOfLines={1}>
                 {subtitle}
               </Text>

@@ -22,6 +22,11 @@ import { ReportsScreen } from '../screens/ReportsScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { MoreFeaturesScreen } from '../screens/MoreFeaturesScreen';
+import { DoctorCopilotScreen } from '../screens/DoctorCopilotScreen';
+import { NursePortalScreen } from '../screens/NursePortalScreen';
+import { LabPortalScreen } from '../screens/LabPortalScreen';
+import { PharmacyReviewScreen } from '../screens/PharmacyReviewScreen';
+import { PatientPortalScreen } from '../screens/PatientPortalScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -55,6 +60,12 @@ export const AppNavigator: React.FC = () => {
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="MoreFeatures" component={MoreFeaturesScreen} />
+      <Stack.Screen name="DoctorCopilot" component={DoctorCopilotScreen} />
+      <Stack.Screen name="NursePortal" component={NursePortalScreen} />
+      <Stack.Screen name="LabPortal" component={LabPortalScreen} />
+      <Stack.Screen name="PharmacyReview" component={PharmacyReviewScreen} />
+      <Stack.Screen name="PatientPortal" component={PatientPortalScreen} />
     </Stack.Navigator>
   );
 };
+

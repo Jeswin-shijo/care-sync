@@ -1,166 +1,233 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useApp } from '../../context/AppContext';
+import { LOW_STOCK_THRESHOLD } from '../../data/mockData';
+import { canAccess, ModuleId, ownerRoleFor, ROLE_LABEL } from '../../logic/access';
 import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
+import { SectionHeader } from '../../components/common/SectionHeader';
+import { FadeInView, PressableScale, PulseDot, stagger } from '../../components/common/Motion';
+import { roleConfig } from '../../components/common/RoleSwitcher';
+import { ModuleTile, TileBadge } from '../../components/shell/ModuleTile';
+import { RolePickerSheet } from '../../components/shell/RolePickerSheet';
+import { ALL_MODULES } from '../../components/shell/modules';
+import { formatCompactCurrency } from '../../utils/formatters';
+import { todayISO } from '../../utils/dates';
+import { goToTab } from '../../utils/navigation';
+
+type IconName = keyof typeof Ionicons.glyphMap;
+
+interface Tile {
+  id: string;
+  module: ModuleId;
+  title: string;
+  icon: IconName;
+  color: string;
+  bg: string;
+  open: () => void;
+  badge?: TileBadge;
+}
+
+interface Section {
+  title: string;
+  tiles: Tile[];
+}
+
+const push = (route: string) => () => router.push(route as any);
 
 export default function MoreRoute() {
-  const modules = [
-    {
-      id: 'pharmacy',
-      title: 'Pharmacy',
-      icon: 'medkit' as const,
-      color: '#0D9488',
-      bg: '#F0FDFA',
-      onPress: () => router.push('/pharmacy'),
-    },
-    {
-      id: 'laboratory',
-      title: 'Laboratory',
-      icon: 'flask' as const,
-      color: '#EC4899',
-      bg: '#FDF2F8',
-      onPress: () => router.push('/lab'),
-    },
-    {
-      id: 'radiology',
-      title: 'Radiology',
-      icon: 'scan' as const,
-      color: '#6366F1',
-      bg: '#EEF2FF',
-      onPress: () => router.push('/radiology'),
-    },
-    {
-      id: 'bloodbank',
-      title: 'Blood Bank',
-      icon: 'water' as const,
-      color: '#EF4444',
-      bg: '#FEF2F2',
-      onPress: () =>
-        Alert.alert(
-          'Blood Bank Inventory',
-          'Current Units in Cold Storage:\n• A+ : 14 Units\n• B+ : 22 Units\n• O+ : 18 Units\n• O- : 4 Units (Critical Alert)\n• AB+ : 8 Units'
-        ),
-    },
-    {
-      id: 'ambulance',
-      title: 'Ambulance',
-      icon: 'car' as const,
-      color: '#EF4444',
-      bg: '#FFF1F2',
-      onPress: () =>
-        Alert.alert(
-          'Ambulance Fleet Status',
-          '• Unit KL-07-AW-1001: Available (Driver: Manoj K)\n• Unit KL-07-AW-1002: In Transit to Kakkanad\n• Unit KL-07-AW-1003 (ICU Mobile): Standby'
-        ),
-    },
-    {
-      id: 'beds',
-      title: 'Bed\nManagement',
-      icon: 'bed' as const,
-      color: '#8B5CF6',
-      bg: '#F5F3FF',
-      onPress: () =>
-        Alert.alert(
-          'Bed Allocation Status',
-          '• Total Beds: 30\n• Occupied: 18 (78%)\n• Available: 12\n• ICU Available: 2/8'
-        ),
-    },
-    {
-      id: 'inventory',
-      title: 'Inventory',
-      icon: 'cube' as const,
-      color: '#10B981',
-      bg: '#ECFDF5',
-      onPress: () =>
-        Alert.alert(
-          'Medical Supplies Inventory',
-          '• Syringes & Needles: 1,450 pcs\n• IV Infusion Sets: 320 pcs\n• Surgical Gloves (7.0 & 7.5): 85 boxes\n• All items within shelf life.'
-        ),
-    },
-    {
-      id: 'reports',
-      title: 'Reports',
-      icon: 'document-text' as const,
-      color: '#F59E0B',
-      bg: '#FFFBEB',
-      onPress: () => router.push('/reports'),
-    },
-    {
-      id: 'templates',
-      title: 'Receipt\nTemplates',
-      icon: 'receipt' as const,
-      color: '#1E6BFF',
-      bg: '#EFF6FF',
-      onPress: () => router.push('/receipt-templates'),
-    },
-    {
-      id: 'finance',
-      title: 'Financial\nManagement',
-      icon: 'stats-chart' as const,
-      color: '#3B82F6',
-      bg: '#EFF6FF',
-      onPress: () => router.push('/financial-management'),
-    },
-    {
-      id: 'docsupport',
-      title: 'Document\nSupport',
-      icon: 'document-attach' as const,
-      color: '#06B6D4',
-      bg: '#E0F7FA',
-      onPress: () =>
-        Alert.alert(
-          'Document Support',
-          'CareSync Document Vault supports HL7 FHIR formats, DICOM imaging links, and PDF digitally signed exports.'
-        ),
-    },
-    {
-      id: 'settings',
-      title: 'Settings',
-      icon: 'settings' as const,
-      color: '#64748B',
-      bg: '#F1F5F9',
-      onPress: () => router.push('/settings'),
-    },
-  ];
+  const {
+    activeRole,
+    setActiveRole,
+    aiAlerts,
+    nurseTasks,
+    labPipeline,
+    prescriptionReviews,
+    medicines,
+    radiologyOrders,
+    appointments,
+    bedSummary,
+    bloodStock,
+    ambulances,
+    supplies,
+    todayStats,
+  } = useApp();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const role = roleConfig(activeRole);
+
+  const sections = useMemo<Section[]>(() => {
+    const t = todayISO();
+    const critical = aiAlerts.filter((a) => a.severity === 'critical').length;
+    const tasksDue = nurseTasks.filter((n) => !n.completed).length;
+    const pendingRx = prescriptionReviews.filter((r) => r.status === 'Pending Review').length;
+    const lowStock = medicines.filter((m) => m.stock <= LOW_STOCK_THRESHOLD).length;
+    const scansToday = radiologyOrders.filter((o) => o.date === t && o.status !== 'Reported').length;
+    const todays = appointments.filter((a) => a.date === t && a.status !== 'Cancelled');
+    const waiting = todays.filter((a) => a.status === 'Waiting').length;
+    const oNeg = bloodStock.find((b) => b.group === 'O-');
+    const lowGroups = bloodStock.filter((b) => b.prbc < 5).length;
+    const freeAmbulances = ambulances.filter((a) => a.status === 'Available').length;
+    const reorder = supplies.filter((s) => s.stock < s.reorderLevel).length;
+
+    const badge = (show: boolean, label: string, tone: TileBadge['tone']): TileBadge | undefined => (show ? { label, tone } : undefined);
+
+    return [
+      {
+        title: 'Role Portals',
+        tiles: [
+          { id: 'copilot', module: 'doctor-copilot', title: 'Doctor Copilot', icon: 'sparkles', color: '#1E6BFF', bg: '#E8F1FF', open: push('/doctor-copilot'), badge: badge(aiAlerts.length > 0, `${aiAlerts.length} alerts`, critical ? 'danger' : 'warning') },
+          { id: 'nurse', module: 'nurse-portal', title: 'Nurse Ward', icon: 'fitness', color: '#059669', bg: '#E7F8F1', open: push('/nurse-portal'), badge: badge(tasksDue > 0, `${tasksDue} tasks due`, 'warning') },
+          { id: 'lab-portal', module: 'lab-portal', title: 'Lab Portal', icon: 'flask', color: '#7C3AED', bg: '#F1EBFF', open: push('/lab-portal'), badge: badge(labPipeline.Abnormal > 0, `${labPipeline.Abnormal} abnormal`, 'danger') },
+          { id: 'drug-safety', module: 'pharmacy-review', title: 'Drug Safety', icon: 'shield-checkmark', color: '#D97706', bg: '#FFF4E0', open: push('/pharmacy-review'), badge: badge(pendingRx > 0, `${pendingRx} pending Rx`, 'warning') },
+          { id: 'patient-app', module: 'patient-portal', title: 'Patient App', icon: 'phone-portrait', color: '#EC4899', bg: '#FDF2F8', open: push('/patient-portal') },
+          { id: 'admin', module: 'admin-portal', title: 'Admin Portal', icon: 'stats-chart', color: '#0284C7', bg: '#E6F4FB', open: push('/admin-portal') },
+        ],
+      },
+      {
+        title: 'Clinical & Diagnostics',
+        tiles: [
+          { id: 'pharmacy', module: 'pharmacy', title: 'Pharmacy', icon: 'medkit', color: '#0D9488', bg: '#E6F7F5', open: push('/pharmacy'), badge: badge(lowStock > 0, `${lowStock} low stock`, 'warning') },
+          { id: 'laboratory', module: 'lab', title: 'Laboratory', icon: 'beaker', color: '#7C3AED', bg: '#F1EBFF', open: push('/lab'), badge: badge(labPipeline.New > 0, `${labPipeline.New} new`, 'info') },
+          { id: 'radiology', module: 'radiology', title: 'Radiology', icon: 'scan', color: '#1E6BFF', bg: '#E8F1FF', open: push('/radiology'), badge: badge(scansToday > 0, `${scansToday} today`, 'info') },
+          { id: 'opd', module: 'opd-consultation', title: 'OPD Consultation', icon: 'medical', color: '#10B981', bg: '#E7F8F1', open: push('/opd-consultation'), badge: badge(waiting > 0, `${waiting} waiting`, 'warning') },
+          { id: 'ipd', module: 'ipd-admission', title: 'IPD Admission', icon: 'enter', color: '#8B5CF6', bg: '#F3EEFF', open: push('/ipd-admission'), badge: badge(true, `${bedSummary.available} beds free`, bedSummary.available > 10 ? 'success' : 'warning') },
+          { id: 'discharge', module: 'discharge-summary', title: 'Discharge Summary', icon: 'document-text', color: '#14B8A6', bg: '#E6F7F5', open: push('/discharge-summary') },
+          { id: 'appointments', module: 'appointments', title: 'Appointments', icon: 'calendar', color: '#F97316', bg: '#FFF1E6', open: push('/appointments'), badge: badge(todays.length > 0, `${todays.length} today`, 'info') },
+        ],
+      },
+      {
+        title: 'Operations',
+        tiles: [
+          {
+            id: 'blood-bank',
+            module: 'blood-bank',
+            title: 'Blood Bank',
+            icon: 'water',
+            color: '#EF4444',
+            bg: '#FDECEC',
+            open: push('/blood-bank'),
+            badge: oNeg && oNeg.prbc < 5 ? { label: 'O- low', tone: 'danger' } : badge(lowGroups > 0, `${lowGroups} groups low`, 'warning'),
+          },
+          { id: 'ambulance', module: 'ambulance', title: 'Ambulance', icon: 'car', color: '#F43F5E', bg: '#FFECEF', open: push('/ambulance'), badge: badge(true, `${freeAmbulances} free`, freeAmbulances ? 'success' : 'danger') },
+          {
+            id: 'beds',
+            module: 'bed-management',
+            title: 'Bed Management',
+            icon: 'bed',
+            color: '#1E6BFF',
+            bg: '#E8F1FF',
+            open: push('/bed-management'),
+            badge: bedSummary.icuAvailable
+              ? { label: `${bedSummary.icuAvailable} ICU free`, tone: bedSummary.icuAvailable <= 2 ? 'warning' : 'success' }
+              : { label: 'ICU full', tone: 'danger' },
+          },
+          { id: 'inventory', module: 'inventory', title: 'Inventory', icon: 'cube', color: '#10B981', bg: '#E7F8F1', open: push('/inventory'), badge: badge(reorder > 0, `${reorder} to reorder`, 'warning') },
+          { id: 'documents', module: 'documents', title: 'Document Support', icon: 'document-attach', color: '#0284C7', bg: '#E6F4FB', open: push('/documents') },
+        ],
+      },
+      {
+        title: 'Finance & Admin',
+        tiles: [
+          { id: 'billing', module: 'billing', title: 'Billing', icon: 'receipt', color: '#1E6BFF', bg: '#E8F1FF', open: () => goToTab('billing'), badge: badge(todayStats.pendingCount > 0, `${todayStats.pendingCount} pending`, 'warning') },
+          { id: 'finance', module: 'financial-management', title: 'Financial Management', icon: 'trending-up', color: '#059669', bg: '#E7F8F1', open: push('/financial-management'), badge: badge(true, `${formatCompactCurrency(todayStats.todayCollection)} today`, 'success') },
+          { id: 'reports', module: 'reports', title: 'Reports', icon: 'bar-chart', color: '#F97316', bg: '#FFF1E6', open: push('/reports') },
+          { id: 'templates', module: 'billing', title: 'Receipt Templates', icon: 'albums', color: '#8B5CF6', bg: '#F3EEFF', open: push('/receipt-templates') },
+          { id: 'settings', module: 'settings', title: 'Settings', icon: 'settings', color: '#475569', bg: '#EEF2F6', open: push('/settings') },
+          { id: 'help', module: 'help-support', title: 'Help & Support', icon: 'help-buoy', color: '#1E6BFF', bg: '#E8F1FF', open: push('/help-support') },
+        ],
+      },
+    ];
+  }, [aiAlerts, nurseTasks, labPipeline, prescriptionReviews, medicines, radiologyOrders, appointments, bedSummary, bloodStock, ambulances, supplies, todayStats]);
+
+  const accessible = ALL_MODULES.filter((m) => canAccess(activeRole, m)).length;
+
+  const openTile = (tile: Tile) => {
+    if (canAccess(activeRole, tile.module)) {
+      tile.open();
+      return;
+    }
+    const owner = ownerRoleFor(tile.module);
+    Alert.alert(
+      `Restricted for ${ROLE_LABEL[activeRole]}`,
+      `${tile.title} is limited to the ${ROLE_LABEL[owner]} role under role-based access control. Switching roles is recorded in the audit trail.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Switch to ${ROLE_LABEL[owner]}`,
+          onPress: () => {
+            setActiveRole(owner);
+            tile.open();
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
-      <Header title="Hospital Modules" showBack={false} />
+      <Header title="More Features" subtitle="Every CareSync module in one place" showBack={false} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <Text style={styles.headerSubtitle}>
-          Access all hospital operations, clinical modules, and administrative workflows.
-        </Text>
-
-        <View style={styles.grid}>
-          {modules.map((mod) => (
-            <TouchableOpacity
-              key={mod.id}
-              style={styles.gridItem}
-              activeOpacity={0.75}
-              onPress={mod.onPress}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: mod.bg }]}>
-                <Ionicons name={mod.icon} size={26} color={mod.color} />
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Who is signed in, and what they can open */}
+        <FadeInView>
+          <PressableScale
+            onPress={() => setPickerOpen(true)}
+            scaleTo={0.98}
+            style={styles.accessCard}
+            accessibilityRole="button"
+            accessibilityLabel={`Signed in as ${ROLE_LABEL[activeRole]}. ${accessible} of ${ALL_MODULES.length} modules available. Switch role`}
+          >
+            <View style={[styles.accessIcon, { backgroundColor: role?.bg ?? colors.primaryLight }]}>
+              <Ionicons name={role?.icon ?? 'person'} size={20} color={role?.color ?? colors.primary} />
+            </View>
+            <View style={styles.accessBody}>
+              <View style={styles.accessTitleRow}>
+                <PulseDot color={role?.color ?? colors.success} size={6} />
+                <Text style={styles.accessTitle}>Signed in as {ROLE_LABEL[activeRole]}</Text>
               </View>
-              <Text style={styles.itemTitle}>{mod.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+              <Text style={styles.accessSub}>
+                {accessible} of {ALL_MODULES.length} modules available • <Ionicons name="lock-closed" size={10} color={colors.textMuted} /> restricted
+              </Text>
+            </View>
+            <View style={styles.switchBtn}>
+              <Ionicons name="swap-horizontal" size={14} color={colors.primary} />
+              <Text style={styles.switchText}>Switch</Text>
+            </View>
+          </PressableScale>
+        </FadeInView>
+
+        {sections.map((section, si) => {
+          const locked = section.tiles.filter((tile) => !canAccess(activeRole, tile.module)).length;
+          return (
+            <FadeInView key={section.title} delay={stagger(si + 1, 80)}>
+              <SectionHeader title={section.title} meta={locked ? `${locked} locked` : undefined} />
+              <View style={styles.gridCard}>
+                {section.tiles.map((tile) => (
+                  <ModuleTile
+                    key={tile.id}
+                    title={tile.title}
+                    icon={tile.icon}
+                    color={tile.color}
+                    bg={tile.bg}
+                    badge={tile.badge}
+                    locked={!canAccess(activeRole, tile.module)}
+                    onPress={() => openTile(tile)}
+                  />
+                ))}
+              </View>
+            </FadeInView>
+          );
+        })}
+
+        <Text style={styles.footnote}>
+          Tiles show live counts from the hospital record. Locked modules can be opened after switching to the owning role.
+        </Text>
       </ScrollView>
+
+      <RolePickerSheet visible={pickerOpen} onClose={() => setPickerOpen(false)} />
     </SafeAreaView>
   );
 }
@@ -168,48 +235,82 @@ export default function MoreRoute() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   scrollContent: {
-    padding: spacing.base,
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
   },
-  headerSubtitle: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginBottom: spacing.base,
-    lineHeight: 18,
-  },
-  grid: {
+  accessCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: spacing.md,
-    justifyContent: 'space-between',
-  },
-  gridItem: {
-    width: '30%',
     backgroundColor: '#FFFFFF',
     borderRadius: radius.lg,
-    paddingVertical: spacing.base,
-    paddingHorizontal: spacing.xs,
-    alignItems: 'center',
+    padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...shadows.sm,
   },
-  iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  accessIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
-  itemTitle: {
-    fontSize: 11,
-    fontWeight: typography.fontWeights.semiBold,
+  accessBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  accessTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  accessTitle: {
+    fontSize: typography.fontSizes.sm + 1,
+    fontWeight: typography.fontWeights.bold,
     color: colors.text,
+    flexShrink: 1,
+  },
+  accessSub: {
+    fontSize: typography.fontSizes.xs + 0.5,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  switchBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    minHeight: 34,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  switchText: {
+    fontSize: typography.fontSizes.xs + 1,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primary,
+  },
+  gridCard: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.sm,
+  },
+  footnote: {
+    fontSize: typography.fontSizes.xs,
+    color: colors.textMuted,
     textAlign: 'center',
-    lineHeight: 14,
+    marginTop: spacing.lg,
+    lineHeight: 16,
+    paddingHorizontal: spacing.base,
   },
 });

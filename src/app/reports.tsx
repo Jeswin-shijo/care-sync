@@ -1,143 +1,126 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { REPORT_DEFINITIONS, type ReportDefinition } from '../data/mockData';
+import { useApp } from '../context/AppContext';
+import { buildReport } from '../logic/reports';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
 import { Header } from '../components/common/Header';
 import { FilterTabs } from '../components/common/FilterTabs';
+import { FadeInView, PressableScale, PulseDot, stagger } from '../components/common/Motion';
+import { pushOrPopTo } from '../components/finance/financeNavigation';
+import type { IconName } from '../components/finance/invoiceUtils';
+import { formatClock } from '../utils/dates';
 
-const REPORTS = [
-  {
-    id: 'rep-1',
-    title: 'Daily Collection Report',
-    description: 'View daily revenue, cash, UPI and card settlements',
-    category: 'Financial',
-    icon: 'cash' as const,
-    color: '#10B981',
-  },
-  {
-    id: 'rep-2',
-    title: 'OPD Collection Report',
-    description: 'Department-wise outpatient consultation revenue',
-    category: 'Financial',
-    icon: 'medkit' as const,
-    color: '#1E6BFF',
-  },
-  {
-    id: 'rep-3',
-    title: 'IPD Admission Report',
-    description: 'In-patient bed occupancy, admissions and discharges',
-    category: 'Operational',
-    icon: 'bed' as const,
-    color: '#8B5CF6',
-  },
-  {
-    id: 'rep-4',
-    title: 'Pharmacy Sales Report',
-    description: 'Medicine-wise dispenses, batch expiries and stock turnover',
-    category: 'Financial',
-    icon: 'fitness' as const,
-    color: '#F59E0B',
-  },
-  {
-    id: 'rep-5',
-    title: 'Lab & Radiology Report',
-    description: 'Diagnostic pathology and imaging test throughput',
-    category: 'Financial',
-    icon: 'flask' as const,
-    color: '#0D9488',
-  },
-  {
-    id: 'rep-6',
-    title: 'Doctor Wise Report',
-    description: 'Consultation volumes and doctor performance metrics',
-    category: 'Operational',
-    icon: 'people' as const,
-    color: '#EC4899',
-  },
-  {
-    id: 'rep-7',
-    title: 'Patient Demographics Report',
-    description: 'Age, gender, and geographical distribution of registered patients',
-    category: 'Patient',
-    icon: 'pie-chart' as const,
-    color: '#6366F1',
-  },
-  {
-    id: 'rep-8',
-    title: 'Insurance & TPA Claims Report',
-    description: 'Pre-auth status, settlement turnaround and pending claims',
-    category: 'Patient',
-    icon: 'shield-checkmark' as const,
-    color: '#06B6D4',
-  },
-];
+const CATEGORIES: ReportDefinition['category'][] = ['Financial', 'Patient', 'Operational'];
 
 export default function ReportsRoute() {
-  const [activeTab, setActiveTab] = useState('Financial');
-
-  const filteredReports = REPORTS.filter(
-    (rep) => activeTab === 'All' || rep.category === activeTab
+  const app = useApp();
+  const params = useLocalSearchParams<{ category?: string }>();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const [tab, setTab] = useState<ReportDefinition['category']>(
+    () => CATEGORIES.find((c) => c.toLowerCase() === String(params.category ?? '').toLowerCase()) ?? 'Financial'
   );
 
-  const handleOpenReport = (rep: typeof REPORTS[0]) => {
-    Alert.alert(
-      rep.title,
-      `Report data compiled for today. Would you like to export CSV or view dashboard?`,
-      [
-        {
-          text: 'View Analytics',
-          onPress: () => router.push('/financial-management'),
-        },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
+  const list = REPORT_DEFINITIONS.filter((d) => d.category === tab);
+
+  // One live headline per report (first KPI), recomputed when the records change.
+  const headlines = useMemo(() => {
+    const out: Record<string, string> = {};
+    list.forEach((d) => {
+      const kpi = buildReport(d.id, app)?.kpis[0];
+      if (kpi) out[d.id] = `${kpi.label}: ${kpi.value}`;
+    });
+    return out;
+  }, [
+    tab,
+    app.invoices,
+    app.patients,
+    app.appointments,
+    app.labSamples,
+    app.radiologyOrders,
+    app.wardInfo,
+    app.medicines,
+    app.supplies,
+    app.dischargeSummaries,
+    app.visits,
+    app.nurseTasks,
+    app.doctors,
+  ]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <Header title="Reports" showBack />
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+      <Header
+        title="Reports"
+        subtitle="Live from hospital records"
+        showBack
+        rightAction={
+          <TouchableOpacity
+            style={styles.headerBtn}
+            onPress={() => pushOrPopTo(navigation.getState(), 'financial-management', '/financial-management')}
+            accessibilityRole="button"
+            accessibilityLabel="Open financial management"
+            hitSlop={6}
+          >
+            <Ionicons name="stats-chart-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+        }
+      />
 
       <FilterTabs
-        tabs={['Financial', 'Patient', 'Operational']}
-        activeTab={activeTab}
-        onSelectTab={setActiveTab}
-        style={styles.filterTabs}
+        tabs={CATEGORIES}
+        activeTab={tab}
+        onSelectTab={(t) => setTab(t as ReportDefinition['category'])}
+        scrollable={false}
+        style={styles.tabs}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
       >
-        <View style={styles.reportsList}>
-          {filteredReports.map((rep) => (
-            <TouchableOpacity
-              key={rep.id}
-              style={styles.reportCard}
-              activeOpacity={0.75}
-              onPress={() => handleOpenReport(rep)}
-            >
-              <View style={[styles.iconBox, { backgroundColor: rep.color + '15' }]}>
-                <Ionicons name={rep.icon} size={22} color={rep.color} />
-              </View>
+        <View style={styles.live}>
+          <PulseDot size={7} />
+          <Text style={styles.liveText}>
+            {list.length} {tab.toLowerCase()} reports • generated live as of {formatClock()}
+          </Text>
+        </View>
 
-              <View style={styles.infoCol}>
-                <Text style={styles.titleText}>{rep.title}</Text>
-                <Text style={styles.descText}>{rep.description}</Text>
-              </View>
-
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </TouchableOpacity>
+        <View style={styles.list}>
+          {list.map((d, i) => (
+            <FadeInView key={`${tab}-${d.id}`} delay={stagger(i, 50)}>
+              <PressableScale
+                style={styles.card}
+                onPress={() => router.push({ pathname: '/report/[id]', params: { id: d.id } })}
+                accessibilityRole="button"
+                accessibilityLabel={`${d.title}. ${d.subtitle}. ${headlines[d.id] ?? ''}`}
+              >
+                <View style={[styles.icon, { backgroundColor: d.color + '16' }]}>
+                  <Ionicons name={d.icon as IconName} size={22} color={d.color} />
+                </View>
+                <View style={styles.body}>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {d.title}
+                  </Text>
+                  <Text style={styles.subtitle} numberOfLines={2}>
+                    {d.subtitle}
+                  </Text>
+                  {!!headlines[d.id] && (
+                    <Text style={[styles.headline, { color: d.color }]} numberOfLines={1}>
+                      {headlines[d.id]}
+                    </Text>
+                  )}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </PressableScale>
+            </FadeInView>
           ))}
         </View>
+
+        <Text style={styles.footnote}>Open a report to see the full table, then export it as PDF, share it or print it.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -146,19 +129,37 @@ export default function ReportsRoute() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
-  filterTabs: {
-    marginVertical: spacing.sm,
+  headerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scrollContent: {
-    padding: spacing.base,
-    paddingBottom: spacing.xxl,
+  tabs: {
+    marginTop: spacing.md,
   },
-  reportsList: {
+  content: {
+    paddingHorizontal: spacing.base,
+  },
+  live: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  liveText: {
+    fontSize: typography.fontSizes.xs + 1,
+    color: colors.textSecondary,
+    fontWeight: typography.fontWeights.medium,
+  },
+  list: {
     gap: spacing.sm,
   },
-  reportCard: {
+  card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -167,26 +168,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     gap: spacing.md,
+    minHeight: 76,
     ...shadows.sm,
   },
-  iconBox: {
-    width: 44,
-    height: 44,
+  icon: {
+    width: 46,
+    height: 46,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoCol: {
+  body: {
     flex: 1,
   },
-  titleText: {
+  title: {
     fontSize: typography.fontSizes.sm + 1,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
   },
-  descText: {
-    fontSize: 11,
+  subtitle: {
+    fontSize: 11.5,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginTop: 1,
+  },
+  headline: {
+    fontSize: 11.5,
+    fontWeight: typography.fontWeights.bold,
+    marginTop: 4,
+  },
+  footnote: {
+    fontSize: typography.fontSizes.xs + 1,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    lineHeight: 17,
   },
 });

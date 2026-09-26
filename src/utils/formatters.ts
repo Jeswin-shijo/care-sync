@@ -1,5 +1,22 @@
-export const formatCurrency = (amount: number): string => {
-  return '₹' + amount.toLocaleString('en-IN');
+/** "₹4,82,500" — Indian digit grouping; pass decimals: 2 for "₹500.00". Negatives render as "-₹500". */
+export const formatCurrency = (amount: number, opts: { decimals?: number } = {}): string => {
+  const decimals = opts.decimals ?? 0;
+  const safe = Number.isFinite(amount) ? amount : 0;
+  const abs = Math.abs(safe).toLocaleString('en-IN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals === 0 ? 2 : decimals,
+  });
+  return `${safe < 0 ? '-' : ''}₹${abs}`;
+};
+
+/** Compact rupees for tiles: ₹4.8L, ₹48.3L, ₹1.2Cr, ₹950. */
+export const formatCompactCurrency = (amount: number): string => {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(2).replace(/\.?0+$/, '')}Cr`;
+  if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(1).replace(/\.0$/, '')}L`;
+  if (abs >= 1000) return `${sign}₹${(abs / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  return `${sign}₹${Math.round(abs)}`;
 };
 
 export const formatDate = (dateString?: string | Date): string => {
@@ -43,10 +60,7 @@ const numToWordsLessThanThousand = (num: number): string => {
   return str.trim();
 };
 
-export const numberToWords = (num: number): string => {
-  if (num === 0) return 'Zero Rupees Only';
-  num = Math.floor(Math.abs(num));
-
+const integerToWords = (num: number): string => {
   const crore = Math.floor(num / 10000000);
   num %= 10000000;
   const lakh = Math.floor(num / 100000);
@@ -60,8 +74,25 @@ export const numberToWords = (num: number): string => {
   if (lakh > 0) result += numToWordsLessThanThousand(lakh) + ' Lakh ';
   if (thousand > 0) result += numToWordsLessThanThousand(thousand) + ' Thousand ';
   if (hundred > 0) result += numToWordsLessThanThousand(hundred) + ' ';
+  return result.trim();
+};
 
-  return result.trim() + ' Rupees Only';
+/** "One Thousand Two Hundred Thirty Four Rupees and Fifty Paise Only" */
+export const numberToWords = (num: number): string => {
+  if (!Number.isFinite(num)) return 'Zero Rupees Only';
+  const negative = num < 0;
+  const abs = Math.abs(num);
+  let rupees = Math.floor(abs);
+  let paise = Math.round((abs - rupees) * 100);
+  if (paise === 100) {
+    rupees += 1;
+    paise = 0;
+  }
+  if (rupees === 0 && paise === 0) return 'Zero Rupees Only';
+  const parts: string[] = [];
+  if (rupees > 0) parts.push(`${integerToWords(rupees)} Rupees`);
+  if (paise > 0) parts.push(`${integerToWords(paise)} Paise`);
+  return `${negative ? 'Minus ' : ''}${parts.join(' and ')} Only`;
 };
 
 export const generateUHID = (): string => {
@@ -70,6 +101,7 @@ export const generateUHID = (): string => {
   return `CC${year}${randomNum}`;
 };
 
+/** @deprecated invoice numbers are sequential now — see nextInvoiceNumber in src/logic/billing.ts */
 export const generateReceiptNo = (prefix: string = 'REG'): string => {
   const year = new Date().getFullYear();
   const randomNum = String(Math.floor(100 + Math.random() * 900)).padStart(5, '0');

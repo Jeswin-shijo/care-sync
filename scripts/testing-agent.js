@@ -2,20 +2,83 @@
 
 /**
  * CareSync Hospital Management System - Autonomous Testing Agent
- * 
- * Version: 1.0.0
+ *
+ * Version: 2.0.0
  * Architecture: React Native / Expo SDK 57 / TypeScript
- * 
- * Comprehensive Test Coverage:
- * 1. Static Architecture & Deprecation Audits
- * 2. Data Integrity & Schema Validation
- * 3. Core Healthcare Business Logic & State Simulation
- * 4. Utilities, Formatters & Document Generation
- * 5. Component Contracts & UI Route Tree Validation
+ *
+ * Unlike v1 (which re-implemented the logic inline and so could never catch
+ * bugs in the app), every logic test here imports the REAL modules from src/
+ * using Node's built-in TypeScript type stripping. Native-only modules
+ * (react-native, expo-print, expo-sharing) are stubbed.
+ *
+ * Suites:
+ * 1. Static architecture audits (routes, dead code, navigation, placeholders)
+ * 2. Mock data integrity (every cross-reference resolves)
+ * 3. Hospital domain logic (registration, booking, IPD, discharge, pharmacy, lab, billing…)
+ * 4. Clinical rules engine (drug safety, vitals, lab trends, AI alerts)
+ * 5. MediOS AI engine (intent routing, live answers, citations)
+ * 6. Utilities & document generation
+ * 7. Component contracts
  */
 
 const fs = require('fs');
 const path = require('path');
+const Module = require('node:module');
+
+const ROOT = path.resolve(__dirname, '..');
+process.chdir(ROOT);
+
+// -------------------------------------------------------------
+// Load real TypeScript sources (Node >= 22.18 strips types natively)
+// -------------------------------------------------------------
+const STUBS = {
+  'react-native': "export const Alert = { alert() {} }; export const Platform = { OS: 'ios' }; export default {};",
+  'expo-print': 'export const printAsync = async () => {}; export const printToFileAsync = async () => ({ uri: "" }); export default {};',
+  'expo-sharing': 'export const isAvailableAsync = async () => false; export const shareAsync = async () => {}; export default {};',
+};
+
+Module.registerHooks({
+  resolve(specifier, context, next) {
+    if (STUBS[specifier]) return { url: `stub:${specifier}`, shortCircuit: true };
+    try {
+      return next(specifier, context);
+    } catch (err) {
+      if (specifier.startsWith('.')) {
+        for (const ext of ['.ts', '.tsx']) {
+          try {
+            return next(specifier + ext, context);
+          } catch {}
+        }
+      }
+      throw err;
+    }
+  },
+  load(url, context, next) {
+    if (url.startsWith('stub:')) return { format: 'module', source: STUBS[url.slice(5)], shortCircuit: true };
+    return next(url, context);
+  },
+});
+
+process.removeAllListeners('warning');
+process.on('warning', (w) => {
+  if (w.name !== 'ExperimentalWarning' && !/MODULE_TYPELESS_PACKAGE_JSON/.test(w.code || '')) console.warn(w);
+});
+
+const src = (p) => require(path.join(ROOT, 'src', p));
+const MD = src('data/mockData.ts');
+const H = src('logic/hospital.ts');
+const billing = src('logic/billing.ts');
+const safety = src('logic/safety.ts');
+const clinical = src('logic/clinical.ts');
+const ai = src('logic/aiEngine.ts');
+const access = src('logic/access.ts');
+const dates = src('utils/dates.ts');
+const fmt = src('utils/formatters.ts');
+const pdf = src('utils/pdfGenerator.ts');
+const theme = src('constants/theme.ts');
+const { HOSPITAL_CONFIG } = src('constants/config.ts');
+const reportsPath = path.join(ROOT, 'src/logic/reports.ts');
+const reports = fs.existsSync(reportsPath) ? require(reportsPath) : null;
 
 // ANSI Color Tokens
 const c = {
@@ -47,22 +110,11 @@ class TestingAgent {
     try {
       fn();
       const durationMs = (performance.now() - start).toFixed(2);
-      this.results.push({
-        name,
-        suite: this.currentSuite,
-        passed: true,
-        durationMs,
-      });
+      this.results.push({ name, suite: this.currentSuite, passed: true, durationMs });
       console.log(`  ${c.green}✔ PASS${c.reset} ${name} ${c.dim}(${durationMs}ms)${c.reset}`);
     } catch (err) {
       const durationMs = (performance.now() - start).toFixed(2);
-      this.results.push({
-        name,
-        suite: this.currentSuite,
-        passed: false,
-        error: err.message || String(err),
-        durationMs,
-      });
+      this.results.push({ name, suite: this.currentSuite, passed: false, error: err.message || String(err), durationMs });
       console.log(`  ${c.red}✖ FAIL${c.reset} ${name} ${c.dim}(${durationMs}ms)${c.reset}`);
       console.log(`    ${c.red}Error: ${err.message}${c.reset}`);
     }
@@ -71,9 +123,7 @@ class TestingAgent {
   expect(actual) {
     return {
       toBe: (expected) => {
-        if (actual !== expected) {
-          throw new Error(`Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
-        }
+        if (actual !== expected) throw new Error(`Expected ${JSON.stringify(expected)} but got ${JSON.stringify(actual)}`);
       },
       toEqual: (expected) => {
         if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -87,26 +137,27 @@ class TestingAgent {
         if (actual) throw new Error(`Expected falsy value but got ${actual}`);
       },
       toBeGreaterThan: (expected) => {
-        if (actual <= expected) throw new Error(`Expected ${actual} > ${expected}`);
+        if (!(actual > expected)) throw new Error(`Expected ${actual} > ${expected}`);
       },
       toBeGreaterThanOrEqual: (expected) => {
-        if (actual < expected) throw new Error(`Expected ${actual} >= ${expected}`);
+        if (!(actual >= expected)) throw new Error(`Expected ${actual} >= ${expected}`);
       },
       toBeLessThanOrEqual: (expected) => {
-        if (actual > expected) throw new Error(`Expected ${actual} <= ${expected}`);
+        if (!(actual <= expected)) throw new Error(`Expected ${actual} <= ${expected}`);
       },
       toContain: (expected) => {
         if (typeof actual === 'string' && !actual.includes(expected)) {
-          throw new Error(`Expected string to contain "${expected}", got: "${actual.slice(0, 100)}..."`);
+          throw new Error(`Expected string to contain "${expected}", got: "${actual.slice(0, 160)}..."`);
         }
-        if (Array.isArray(actual) && !actual.includes(expected)) {
-          throw new Error(`Expected array to contain "${expected}"`);
+        if (Array.isArray(actual) && !actual.includes(expected)) throw new Error(`Expected array to contain "${expected}"`);
+      },
+      notToContain: (expected) => {
+        if ((typeof actual === 'string' || Array.isArray(actual)) && actual.includes(expected)) {
+          throw new Error(`Expected not to contain "${expected}"`);
         }
       },
       toMatch: (regex) => {
-        if (!regex.test(String(actual))) {
-          throw new Error(`Expected "${actual}" to match pattern ${regex}`);
-        }
+        if (!regex.test(String(actual))) throw new Error(`Expected "${String(actual).slice(0, 160)}" to match pattern ${regex}`);
       },
     };
   }
@@ -114,836 +165,605 @@ class TestingAgent {
   summary() {
     const total = this.results.length;
     const passed = this.results.filter((r) => r.passed).length;
-    const failed = this.results.filter((r) => !r.passed).length;
+    const failed = total - passed;
     const totalTime = Date.now() - this.startTime;
 
     console.log(`\n${c.bold}===================================================================${c.reset}`);
-    console.log(`${c.bold}${c.magenta}CareSync Autonomous Testing Agent - Executive Quality Report${c.reset}`);
+    console.log(`${c.bold}${c.magenta}CareSync Autonomous Testing Agent - Quality Report${c.reset}`);
     console.log(`${c.bold}===================================================================${c.reset}`);
     console.log(`Total Test Verifications: ${c.bold}${total}${c.reset}`);
     console.log(`Tests Passed:             ${c.bold}${c.green}${passed}${c.reset}`);
     console.log(`Tests Failed:             ${c.bold}${failed > 0 ? c.red : c.green}${failed}${c.reset}`);
-    console.log(`Pass Rate:                ${c.bold}${c.green}${((passed / total) * 100).toFixed(1)}%${c.reset}`);
+    console.log(`Pass Rate:                ${c.bold}${failed ? c.red : c.green}${((passed / total) * 100).toFixed(1)}%${c.reset}`);
     console.log(`Execution Time:           ${c.bold}${totalTime}ms${c.reset}`);
 
     if (failed > 0) {
       console.log(`\n${c.red}${c.bold}Failed Tests:${c.reset}`);
-      this.results
-        .filter((r) => !r.passed)
-        .forEach((r) => {
-          console.log(`  - [${r.suite}] ${r.name}: ${r.error}`);
-        });
+      this.results.filter((r) => !r.passed).forEach((r) => console.log(`  - [${r.suite}] ${r.name}: ${r.error}`));
       return false;
-    } else {
-      console.log(`\n${c.green}${c.bold}✨ COMPLETE HOSPITAL APP TESTED & CERTIFIED FOR PRODUCTION! ✨${c.reset}\n`);
-      return true;
     }
+    console.log(`\n${c.green}${c.bold}✔ All checks passed.${c.reset}\n`);
+    return true;
   }
 }
 
 // -------------------------------------------------------------
-// HELPER LOGIC (Extracted from src for standalone Node execution)
+// Helpers
 // -------------------------------------------------------------
-
-function formatCurrency(amount) {
-  return '₹' + amount.toLocaleString('en-IN');
-}
-
-function formatDate(dateString) {
-  if (!dateString) return '';
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
-  if (isNaN(date.getTime())) return String(dateString);
-  return date.toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
+const walk = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    return d.isDirectory() ? walk(p) : [p];
   });
-}
-
-function formatTime(timeString) {
-  if (!timeString) return '';
-  const date = typeof timeString === 'string' ? new Date(timeString) : timeString;
-  if (isNaN(date.getTime())) return String(timeString);
-  return date.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
-}
-
-const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
-const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-
-function numToWordsLessThanThousand(num) {
-  let str = '';
-  if (num >= 100) {
-    str += ones[Math.floor(num / 100)] + ' Hundred ';
-    num %= 100;
-  }
-  if (num >= 20) {
-    str += tens[Math.floor(num / 10)] + ' ';
-    num %= 10;
-  }
-  if (num > 0) {
-    str += ones[num] + ' ';
-  }
-  return str.trim();
-}
-
-function numberToWords(num) {
-  if (num === 0) return 'Zero Rupees Only';
-  num = Math.floor(Math.abs(num));
-
-  const crore = Math.floor(num / 10000000);
-  num %= 10000000;
-  const lakh = Math.floor(num / 100000);
-  num %= 100000;
-  const thousand = Math.floor(num / 1000);
-  num %= 1000;
-  const hundred = num;
-
-  let result = '';
-  if (crore > 0) result += numToWordsLessThanThousand(crore) + ' Crore ';
-  if (lakh > 0) result += numToWordsLessThanThousand(lakh) + ' Lakh ';
-  if (thousand > 0) result += numToWordsLessThanThousand(thousand) + ' Thousand ';
-  if (hundred > 0) result += numToWordsLessThanThousand(hundred) + ' ';
-
-  return result.trim() + ' Rupees Only';
-}
-
-function generateUHID() {
-  const year = new Date().getFullYear();
-  const randomNum = Math.floor(10000 + Math.random() * 90000);
-  return `CC${year}${randomNum}`;
-}
-
-function generateReceiptNo(prefix = 'REG') {
-  const year = new Date().getFullYear();
-  const randomNum = String(Math.floor(100 + Math.random() * 900)).padStart(5, '0');
-  return `${prefix}-${year}-${randomNum}`;
-}
-
-// -------------------------------------------------------------
-// MAIN TEST RUNNER
-// -------------------------------------------------------------
+const rel = (p) => path.relative(ROOT, p);
+const LIVE_DIRS = ['src/app', 'src/components', 'src/context', 'src/utils', 'src/logic'];
+const liveFiles = () => LIVE_DIRS.flatMap((d) => (fs.existsSync(d) ? walk(d) : [])).filter((f) => /\.(ts|tsx)$/.test(f));
+const read = (f) => fs.readFileSync(f, 'utf8');
+const fresh = () => H.createInitialState();
+const patientByName = (s, name) => s.patients.find((p) => p.name === name);
+const doctorByName = (s, name) => s.doctors.find((d) => d.name === name);
 
 function run() {
   const agent = new TestingAgent();
 
   console.log(`${c.bold}${c.blue}╔════════════════════════════════════════════════════════════╗${c.reset}`);
-  console.log(`${c.bold}${c.blue}║          CARESYNC AUTONOMOUS TESTING AGENT v1.0.0          ║${c.reset}`);
-  console.log(`${c.bold}${c.blue}║      Target: Expo Router SDK 57 / React Native 0.86       ║${c.reset}`);
+  console.log(`${c.bold}${c.blue}║          CARESYNC AUTONOMOUS TESTING AGENT v2.0.0          ║${c.reset}`);
+  console.log(`${c.bold}${c.blue}║   Real-source tests • Expo Router SDK 57 • RN 0.86         ║${c.reset}`);
   console.log(`${c.bold}${c.blue}╚════════════════════════════════════════════════════════════╝${c.reset}`);
 
   // -----------------------------------------------------------
-  // SUITE 1: Static Architecture & Deprecation Audits
+  // 1. STATIC ARCHITECTURE
   // -----------------------------------------------------------
-  agent.suite('Static Architecture & Deprecation Audits');
+  agent.suite('Static Architecture Audits');
 
-  agent.test('Audit 1: Zero files in src/ should import deprecated SafeAreaView from "react-native"', () => {
-    function walk(dir) {
-      let results = [];
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        const full = path.join(dir, file);
-        if (fs.statSync(full).isDirectory()) {
-          results = results.concat(walk(full));
-        } else if (file.endsWith('.tsx') || file.endsWith('.ts')) {
-          const content = fs.readFileSync(full, 'utf8');
-          if (/import\s*\{[^}]*SafeAreaView[^}]*\}\s*from\s*['"]react-native['"]/.test(content)) {
-            results.push(full);
-          }
-        }
-      }
-      return results;
-    }
-
-    const deprecated = walk('src');
-    if (deprecated.length > 0) {
-      throw new Error(`Found ${deprecated.length} files importing deprecated SafeAreaView: ${deprecated.join(', ')}`);
-    }
-    agent.expect(deprecated.length).toBe(0);
+  agent.test('Audit 1: No live file imports the deprecated SafeAreaView from "react-native"', () => {
+    const offenders = liveFiles().filter((f) => /import\s*\{[^}]*\bSafeAreaView\b[^}]*\}\s*from\s*['"]react-native['"]/.test(read(f)));
+    if (offenders.length) throw new Error(`Deprecated SafeAreaView in: ${offenders.map(rel).join(', ')}`);
   });
 
-  agent.test('Audit 2: All 24 Expo Router route screens must exist and export a default component', () => {
-    const routeFiles = [
-      'src/app/_layout.tsx',
-      'src/app/index.tsx',
-      'src/app/(tabs)/_layout.tsx',
-      'src/app/(tabs)/index.tsx',
-      'src/app/(tabs)/patients.tsx',
-      'src/app/(tabs)/billing.tsx',
-      'src/app/(tabs)/ai.tsx',
-      'src/app/(tabs)/more.tsx',
-      'src/app/appointments.tsx',
-      'src/app/book-appointment.tsx',
-      'src/app/patient/[id].tsx',
-      'src/app/register-patient.tsx',
-      'src/app/opd-consultation.tsx',
-      'src/app/ipd-admission.tsx',
-      'src/app/pharmacy.tsx',
-      'src/app/lab.tsx',
-      'src/app/radiology.tsx',
-      'src/app/receipt/[id].tsx',
-      'src/app/receipt-templates.tsx',
-      'src/app/discharge-summary.tsx',
-      'src/app/financial-management.tsx',
-      'src/app/reports.tsx',
-      'src/app/notifications.tsx',
-      'src/app/settings.tsx',
-    ];
-
-    routeFiles.forEach((rf) => {
-      const exists = fs.existsSync(rf);
-      if (!exists) throw new Error(`Missing expected route file: ${rf}`);
-      const content = fs.readFileSync(rf, 'utf8');
-      const hasDefaultExport = /export\s+default\s+(function|class|[A-Za-z0-9_]+)/.test(content);
-      if (!hasDefaultExport) {
-        throw new Error(`Route file ${rf} does not have a default export required by Expo Router`);
-      }
+  agent.test('Audit 2: Every route file exports a default component and the route contract is complete', () => {
+    const routes = walk('src/app').filter((f) => f.endsWith('.tsx'));
+    routes.forEach((f) => {
+      if (!/export\s+default\s+function|export\s+default\s+[A-Z]/.test(read(f))) throw new Error(`${rel(f)} has no default export`);
     });
-    agent.expect(routeFiles.length).toBe(24);
-  });
-
-  agent.test('Audit 3: All 22 React Navigation screen modules must exist and export a valid component', () => {
-    const screenFiles = [
-      'src/screens/SplashScreen.tsx',
-      'src/screens/DashboardScreen.tsx',
-      'src/screens/PatientsScreen.tsx',
-      'src/screens/BillingScreen.tsx',
-      'src/screens/AiAssistantScreen.tsx',
-      'src/screens/MoreFeaturesScreen.tsx',
-      'src/screens/AppointmentsScreen.tsx',
-      'src/screens/BookAppointmentScreen.tsx',
-      'src/screens/PatientDetailsScreen.tsx',
-      'src/screens/RegisterPatientScreen.tsx',
-      'src/screens/OpdConsultationScreen.tsx',
-      'src/screens/IpdAdmissionScreen.tsx',
-      'src/screens/PharmacyScreen.tsx',
-      'src/screens/LabPathologyScreen.tsx',
-      'src/screens/RadiologyScreen.tsx',
-      'src/screens/ReceiptDetailScreen.tsx',
-      'src/screens/ReceiptTemplatesScreen.tsx',
-      'src/screens/DischargeSummaryScreen.tsx',
-      'src/screens/FinancialManagementScreen.tsx',
-      'src/screens/ReportsScreen.tsx',
-      'src/screens/NotificationsScreen.tsx',
-      'src/screens/SettingsScreen.tsx',
+    const required = [
+      '_layout', 'index', '(tabs)/_layout', '(tabs)/index', '(tabs)/patients', '(tabs)/billing', '(tabs)/ai', '(tabs)/more',
+      'patient/[id]', 'register-patient', 'opd-consultation', 'ipd-admission', 'discharge-summary', 'appointments',
+      'book-appointment', 'pharmacy', 'lab', 'radiology', 'receipt/[id]', 'receipt-templates', 'financial-management',
+      'reports', 'notifications', 'settings', 'doctor-copilot', 'nurse-portal', 'lab-portal', 'pharmacy-review', 'patient-portal',
     ];
-
-    screenFiles.forEach((sf) => {
-      const exists = fs.existsSync(sf);
-      if (!exists) throw new Error(`Missing screen file: ${sf}`);
-      const content = fs.readFileSync(sf, 'utf8');
-      const hasExport = /export\s+(const|default|function|class)/.test(content);
-      if (!hasExport) throw new Error(`Screen file ${sf} does not export a component`);
+    required.forEach((r) => {
+      if (!fs.existsSync(`src/app/${r}.tsx`)) throw new Error(`Missing route src/app/${r}.tsx`);
     });
-    agent.expect(screenFiles.length).toBe(22);
+    agent.expect(routes.length).toBeGreaterThanOrEqual(required.length);
   });
 
-  agent.test('Audit 4: Navigation stack configuration (AppNavigator.tsx) binds all 22 screens', () => {
-    const navContent = fs.readFileSync('src/navigation/AppNavigator.tsx', 'utf8');
-    const screenNames = [
-      'Splash', 'Main', 'Appointments', 'BookAppointment', 'PatientDetails',
-      'RegisterPatient', 'OpdConsultation', 'IpdAdmission', 'Pharmacy',
-      'LabPathology', 'Radiology', 'Billing', 'ReceiptDetail', 'ReceiptTemplates',
-      'DischargeSummary', 'AiAssistant', 'FinancialManagement', 'Reports',
-      'Notifications', 'Settings', 'MoreFeatures',
-    ];
+  agent.test('Audit 3: Live code never imports the dead React Navigation layer (src/screens, src/navigation)', () => {
+    const offenders = liveFiles().filter((f) => /from\s+['"][./]*(screens|navigation)\//.test(read(f)));
+    if (offenders.length) throw new Error(`Imports legacy layer: ${offenders.map(rel).join(', ')}`);
+  });
 
-    screenNames.forEach((name) => {
-      agent.expect(navContent).toContain(`name="${name}"`);
+  agent.test('Audit 3b: No live imports of @react-navigation/* (Expo Router 56+ refuses to bundle them)', () => {
+    const offenders = liveFiles().filter((f) => /from\s+['"]@react-navigation\//.test(read(f)));
+    if (offenders.length) throw new Error(`Use 'expo-router/react-navigation' instead in: ${offenders.map(rel).join(', ')}`);
+  });
+
+  agent.test('Audit 4: No router.push onto a tab route (it stacks a duplicate tab navigator)', () => {
+    const offenders = liveFiles().filter((f) => /router\.push\(\s*['"`]\/\(tabs\)/.test(read(f)));
+    if (offenders.length) throw new Error(`router.push('/(tabs)…') in: ${offenders.map(rel).join(', ')}`);
+  });
+
+  agent.test('Audit 5: No "coming soon" placeholders in screens', () => {
+    const offenders = liveFiles().filter((f) => /coming soon|in roadmap|not implemented/i.test(read(f)));
+    if (offenders.length) throw new Error(`Placeholder copy in: ${offenders.map(rel).join(', ')}`);
+  });
+
+  agent.test('Audit 6: Screens contain no hardcoded 2025 calendar dates (mock data is relative to today)', () => {
+    const re = /\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) 2025\b|'2025-\d{2}-\d{2}'/;
+    const offenders = walk('src/app').concat(walk('src/components')).filter((f) => re.test(read(f)));
+    if (offenders.length) throw new Error(`Hardcoded 2025 dates in: ${offenders.map(rel).join(', ')}`);
+  });
+
+  agent.test('Audit 7: Domain logic modules are framework-free (no React / React Native imports)', () => {
+    walk('src/logic').forEach((f) => {
+      if (/from\s+['"](react|react-native|expo-[a-z-]+)['"]/.test(read(f))) throw new Error(`${rel(f)} imports a UI/native module`);
     });
   });
 
-  agent.test('Audit 5: Theme design tokens file (theme.ts) has complete colors, spacing, radius, and shadows', () => {
-    const themeContent = fs.readFileSync('src/constants/theme.ts', 'utf8');
-    agent.expect(themeContent).toContain('export const colors = {');
-    agent.expect(themeContent).toContain('export const typography = {');
-    agent.expect(themeContent).toContain('export const spacing = {');
-    agent.expect(themeContent).toContain('export const radius = {');
-    agent.expect(themeContent).toContain('export const shadows = {');
-  });
-
-  agent.test('Audit 6: Hospital configuration (config.ts) is fully defined with GSTIN and doctor credentials', () => {
-    const configContent = fs.readFileSync('src/constants/config.ts', 'utf8');
-    agent.expect(configContent).toContain('City Care Multispecialty Hospital');
-    agent.expect(configContent).toContain('gstin:');
-    agent.expect(configContent).toContain('doctorName:');
+  agent.test('Audit 8: Theme tokens and hospital config are complete', () => {
+    ['colors', 'typography', 'spacing', 'radius', 'shadows'].forEach((k) => agent.expect(!!theme[k]).toBeTruthy());
+    agent.expect(HOSPITAL_CONFIG.gstin).toMatch(/^\d{2}[A-Z]{5}\d{4}[A-Z]\d[A-Z0-9]{2}$/);
+    agent.expect(HOSPITAL_CONFIG.name).toContain('City Care');
   });
 
   // -----------------------------------------------------------
-  // SUITE 2: Hospital Data Integrity & Schema Validation
+  // 2. DATA INTEGRITY
   // -----------------------------------------------------------
-  agent.suite('Hospital Data Integrity & Schema Validation');
+  agent.suite('Mock Data Integrity');
+  const s0 = fresh();
+  const pid = new Set(s0.patients.map((p) => p.id));
 
-  const mockDataContent = fs.readFileSync('src/data/mockData.ts', 'utf8');
+  agent.test('Data 1: Patient UHIDs are unique and follow CC<YEAR><5 digits>', () => {
+    const uhids = s0.patients.map((p) => p.uhid);
+    agent.expect(new Set(uhids).size).toBe(uhids.length);
+    uhids.forEach((u) => agent.expect(u).toMatch(/^CC\d{9}$/));
+  });
 
-  agent.test('Schema 1: Mock data file must define TypeScript interfaces for all hospital entities', () => {
-    const interfaces = [
-      'interface Patient',
-      'interface Doctor',
-      'interface Appointment',
-      'interface Invoice',
-      'interface Medicine',
-      'interface LabTest',
-      'interface RadiologyScan',
-      'interface AppNotification',
-    ];
-    interfaces.forEach((iface) => {
-      agent.expect(mockDataContent).toContain(iface);
+  agent.test('Data 2: Appointments reference real patients/doctors and the doctor\'s own department', () => {
+    s0.appointments.forEach((a) => {
+      const p = s0.patients.find((x) => x.id === a.patientId);
+      const d = s0.doctors.find((x) => x.id === a.doctorId);
+      if (!p || !d) throw new Error(`${a.id} has a dangling reference`);
+      agent.expect(a.patientName).toBe(p.name);
+      agent.expect(a.department).toBe(d.department);
+      agent.expect(a.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     });
+    agent.expect(s0.appointments.some((a) => a.date === dates.todayISO())).toBeTruthy();
   });
 
-  agent.test('Schema 2: Initial patients data contains active and admitted patient records with valid UHID pattern', () => {
-    agent.expect(mockDataContent).toContain('INITIAL_PATIENTS: Patient[] = [');
-    agent.expect(mockDataContent).toContain('uhid: \'CC202500125\'');
-    agent.expect(mockDataContent).toContain('status: \'Admitted\'');
-    agent.expect(mockDataContent).toContain('status: \'Active\'');
+  agent.test('Data 3: Invoices belong to real patients and their line items add up to the amount', () => {
+    s0.invoices.forEach((inv) => {
+      const p = s0.patients.find((x) => x.id === inv.patientId);
+      if (!p) throw new Error(`${inv.invoiceNo} → unknown patient`);
+      agent.expect(inv.patientName).toBe(p.name);
+      agent.expect(inv.uhid).toBe(p.uhid);
+      const sum = billing.itemsTotal(inv.items || []);
+      if (Math.abs(sum - inv.amount) > 0.01) throw new Error(`${inv.invoiceNo}: items ${sum} ≠ amount ${inv.amount}`);
+    });
+    const nos = s0.invoices.map((i) => i.invoiceNo);
+    agent.expect(new Set(nos).size).toBe(nos.length);
   });
 
-  agent.test('Schema 3: Initial doctors data contains specialists with consultation fees and department assignments', () => {
-    agent.expect(mockDataContent).toContain('INITIAL_DOCTORS: Doctor[] = [');
-    agent.expect(mockDataContent).toContain('Dr. Priya Menon');
-    agent.expect(mockDataContent).toContain('General Medicine');
-    agent.expect(mockDataContent).toContain('Dr. Rajesh Varma');
-    agent.expect(mockDataContent).toContain('Cardiology');
+  agent.test('Data 4: Wards balance and every admitted patient holds a unique bed in a real ward', () => {
+    s0.wardInfo.forEach((w) => agent.expect(w.occupied + w.available).toBe(w.totalBeds));
+    const admitted = s0.patients.filter((p) => p.status === 'Admitted');
+    admitted.forEach((p) => {
+      if (!p.room || !s0.wardInfo.find((w) => w.id === p.wardId)) throw new Error(`${p.name} admitted without a valid bed`);
+    });
+    agent.expect(new Set(admitted.map((p) => p.room)).size).toBe(admitted.length);
+    s0.patients.filter((p) => p.status !== 'Admitted').forEach((p) => agent.expect(p.wardId).toBe(undefined));
   });
 
-  agent.test('Schema 4: Initial medicines inventory includes dosage forms, stock counts, and valid expiry dates', () => {
-    agent.expect(mockDataContent).toContain('INITIAL_MEDICINES: Medicine[] = [');
-    agent.expect(mockDataContent).toContain('Paracetamol 500mg');
-    agent.expect(mockDataContent).toContain('Amoxicillin 500mg');
-    agent.expect(mockDataContent).toContain('Pantoprazole 40mg');
-    agent.expect(mockDataContent).toContain('stock: 120');
-  });
-
-  // -----------------------------------------------------------
-  // SUITE 3: Core Healthcare Business Logic & State Simulation
-  // -----------------------------------------------------------
-  agent.suite('Core Healthcare Business Logic & State Simulation');
-
-  agent.test('Logic 1: Patient Registration generates unique UHID, assigns Active status, and creates ₹500 REG receipt', () => {
-    const patients = [];
-    const invoices = [];
-    const notifications = [];
-
-    function addPatient(data) {
-      const newPatient = {
-        ...data,
-        id: `pat-${Date.now()}`,
-        uhid: generateUHID(),
-        registeredDate: new Date().toISOString().split('T')[0],
-        status: 'Active',
-      };
-      patients.push(newPatient);
-
-      const regInvoice = {
-        id: `inv-${Date.now()}`,
-        invoiceNo: generateReceiptNo('REG'),
-        title: 'Registration Fee',
-        type: 'REG',
-        patientId: newPatient.id,
-        patientName: newPatient.name,
-        uhid: newPatient.uhid,
-        amount: 500,
-        paymentMode: 'UPI',
-        status: 'Paid',
-        items: [{ description: 'New Patient Registration & Smart UHID Card', qty: 1, amount: 500 }],
-      };
-      invoices.push(regInvoice);
-
-      notifications.push({
-        id: `notif-${Date.now()}`,
-        title: 'New patient registered',
-        description: `${newPatient.name} registered with UHID ${newPatient.uhid}`,
-        read: false,
+  agent.test('Data 5: Clinical records (labs, vitals, visits, tasks, Rx, profiles) reference real patients', () => {
+    const check = (list, label) =>
+      list.forEach((x) => {
+        if (x.patientId && !pid.has(x.patientId)) throw new Error(`${label} ${x.id} → unknown patient ${x.patientId}`);
       });
-
-      return newPatient;
-    }
-
-    const p = addPatient({
-      name: 'Sunil Kumar',
-      age: 42,
-      gender: 'Male',
-      phone: '+91 94471 22334',
-      bloodGroup: 'B+',
-    });
-
-    agent.expect(patients.length).toBe(1);
-    agent.expect(patients[0].name).toBe('Sunil Kumar');
-    agent.expect(patients[0].status).toBe('Active');
-    agent.expect(patients[0].uhid).toMatch(/^CC\d{9}$/);
-
-    agent.expect(invoices.length).toBe(1);
-    agent.expect(invoices[0].amount).toBe(500);
-    agent.expect(invoices[0].type).toBe('REG');
-    agent.expect(invoices[0].patientId).toBe(p.id);
-
-    agent.expect(notifications.length).toBe(1);
-    agent.expect(notifications[0].title).toBe('New patient registered');
+    check(s0.labSamples, 'sample');
+    check(s0.vitals, 'vitals');
+    check(s0.visits, 'visit');
+    check(s0.nurseTasks, 'task');
+    check(s0.prescriptionReviews, 'rx');
+    check(s0.radiologyOrders, 'radiology order');
+    s0.clinicalProfiles.forEach((cp) => agent.expect(pid.has(cp.patientId)).toBeTruthy());
+    agent.expect(s0.clinicalProfiles.length).toBe(s0.patients.length);
   });
 
-  agent.test('Logic 2: Appointment Booking allocates slot, token number, Confirmed status, and OPD invoice', () => {
-    const appointments = [];
-    const invoices = [];
-
-    function bookAppointment(patient, doctor, date, time) {
-      const newApt = {
-        id: `apt-${Date.now()}`,
-        patientId: patient.id,
-        patientName: patient.name,
-        doctorId: doctor.id,
-        doctorName: doctor.name,
-        department: doctor.department,
-        type: 'OPD',
-        date,
-        time,
-        status: 'Confirmed',
-        tokenNo: appointments.length + 1,
-      };
-      appointments.push(newApt);
-
-      const opdInvoice = {
-        id: `inv-${Date.now()}`,
-        invoiceNo: generateReceiptNo('OPD'),
-        title: 'OPD Consultation Fee',
-        type: 'OPD',
-        patientId: patient.id,
-        patientName: patient.name,
-        uhid: patient.uhid,
-        amount: doctor.fee,
-        paymentMode: 'UPI',
-        status: 'Paid',
-        doctorName: doctor.name,
-        items: [{ description: `Specialist Consultation - ${doctor.name}`, qty: 1, rate: doctor.fee, amount: doctor.fee }],
-      };
-      invoices.push(opdInvoice);
-
-      return newApt;
-    }
-
-    const testPatient = { id: 'pat-1', name: 'Ananya S', uhid: 'CC202500125' };
-    const testDoctor = { id: 'doc-1', name: 'Dr. Priya Menon', department: 'General Medicine', fee: 600 };
-
-    const apt = bookAppointment(testPatient, testDoctor, '2026-09-25', '10:30 AM');
-
-    agent.expect(appointments.length).toBe(1);
-    agent.expect(apt.tokenNo).toBe(1);
-    agent.expect(apt.status).toBe('Confirmed');
-    agent.expect(apt.doctorName).toBe('Dr. Priya Menon');
-
-    agent.expect(invoices.length).toBe(1);
-    agent.expect(invoices[0].amount).toBe(600);
-    agent.expect(invoices[0].type).toBe('OPD');
+  agent.test('Data 6: Prescription items and dispensable lines map to stocked medicines', () => {
+    s0.prescriptionReviews.forEach((rx) =>
+      (rx.items || []).forEach((it) => {
+        if (it.medicineId && !s0.medicines.find((m) => m.id === it.medicineId)) throw new Error(`${rx.prescriptionCode} → ${it.medicineId}`);
+      })
+    );
   });
 
-  agent.test('Logic 3: IPD Admission correctly allocates ICU (₹7500) vs General Ward (₹3500) & tracks room state', () => {
-    function admitPatient(patient, roomType, department) {
-      patient.status = 'Admitted';
-      patient.room = `${roomType} Room`;
-
-      const isIcu = roomType.includes('ICU');
-      const amount = isIcu ? 7500 : 3500;
-
-      const invoice = {
-        id: `inv-${Date.now()}`,
-        invoiceNo: generateReceiptNo('IPD'),
-        title: 'IPD Admission Advance & Room Charge',
-        type: 'IPD',
-        patientId: patient.id,
-        amount,
-        paymentMode: 'Card',
-        status: 'Paid',
-        items: [
-          { description: `${roomType} Room Admission Charge`, qty: 1, amount: isIcu ? 5000 : 2500 },
-          { description: 'Nursing & Sanitization Fee', qty: 1, amount: 1000 },
-        ],
-      };
-
-      return invoice;
-    }
-
-    const p1 = { id: 'pat-10', name: 'Test ICU Patient', status: 'Active' };
-    const icuInv = admitPatient(p1, 'ICU', 'Critical Care');
-    agent.expect(p1.status).toBe('Admitted');
-    agent.expect(p1.room).toBe('ICU Room');
-    agent.expect(icuInv.amount).toBe(7500);
-
-    const p2 = { id: 'pat-11', name: 'Test General Patient', status: 'Active' };
-    const genInv = admitPatient(p2, 'General Ward', 'Medicine');
-    agent.expect(p2.status).toBe('Admitted');
-    agent.expect(p2.room).toBe('General Ward Room');
-    agent.expect(genInv.amount).toBe(3500);
-
-    // Discharge
-    p1.status = 'Discharged';
-    agent.expect(p1.status).toBe('Discharged');
-  });
-
-  agent.test('Logic 4: Dispensary Inventory & Cart Engine - Stock decrement, decrement button stock restore, full removal', () => {
-    let medicines = [
-      { id: 'med-1', name: 'Paracetamol 500mg', stock: 10, price: 12 },
-      { id: 'med-2', name: 'Amoxicillin 500mg', stock: 5, price: 45 },
-    ];
-    let cart = [];
-
-    function addToCart(item) {
-      const med = medicines.find((m) => m.id === item.id);
-      if (med && med.stock <= 0) return false;
-
-      const existing = cart.find((ci) => ci.id === item.id);
-      if (existing) {
-        existing.qty += 1;
-      } else {
-        cart.push({ ...item, qty: 1 });
-      }
-
-      if (med) med.stock -= 1;
-      return true;
-    }
-
-    function decrementCartItem(itemId) {
-      const item = cart.find((ci) => ci.id === itemId);
-      if (!item) return;
-
-      const med = medicines.find((m) => m.id === itemId);
-      if (med) med.stock += 1;
-
-      if (item.qty > 1) {
-        item.qty -= 1;
-      } else {
-        cart = cart.filter((ci) => ci.id !== itemId);
-      }
-    }
-
-    function removeFromCart(itemId) {
-      const item = cart.find((ci) => ci.id === itemId);
-      if (!item) return;
-
-      const med = medicines.find((m) => m.id === itemId);
-      if (med) med.stock += item.qty;
-
-      cart = cart.filter((ci) => ci.id !== itemId);
-    }
-
-    // Step 1: Add Paracetamol (stock 10 -> 9, cart qty 1)
-    addToCart({ id: 'med-1', name: 'Paracetamol 500mg', price: 12 });
-    agent.expect(medicines[0].stock).toBe(9);
-    agent.expect(cart.length).toBe(1);
-    agent.expect(cart[0].qty).toBe(1);
-
-    // Step 2: Add second Paracetamol (stock 9 -> 8, cart qty 2)
-    addToCart({ id: 'med-1', name: 'Paracetamol 500mg', price: 12 });
-    agent.expect(medicines[0].stock).toBe(8);
-    agent.expect(cart[0].qty).toBe(2);
-
-    // Step 3: Decrement Paracetamol via minus button (stock 8 -> 9, cart qty 1) - THE BUG WE FIXED!
-    decrementCartItem('med-1');
-    agent.expect(medicines[0].stock).toBe(9);
-    agent.expect(cart[0].qty).toBe(1);
-
-    // Step 4: Add Amoxicillin 2 units
-    addToCart({ id: 'med-2', name: 'Amoxicillin 500mg', price: 45 });
-    addToCart({ id: 'med-2', name: 'Amoxicillin 500mg', price: 45 });
-    agent.expect(medicines[1].stock).toBe(3);
-    agent.expect(cart.length).toBe(2);
-
-    // Step 5: Remove Amoxicillin completely (should restore 2 units of stock: 3 -> 5)
-    removeFromCart('med-2');
-    agent.expect(medicines[1].stock).toBe(5);
-    agent.expect(cart.length).toBe(1);
-
-    // Step 6: Decrement remaining 1 Paracetamol (should remove from cart and restore stock: 9 -> 10)
-    decrementCartItem('med-1');
-    agent.expect(medicines[0].stock).toBe(10);
-    agent.expect(cart.length).toBe(0);
-
-    // Step 7: Zero stock guard
-    medicines[0].stock = 0;
-    const added = addToCart({ id: 'med-1', name: 'Paracetamol 500mg', price: 12 });
-    agent.expect(added).toBeFalsy();
-    agent.expect(medicines[0].stock).toBe(0);
-    agent.expect(cart.length).toBe(0);
-  });
-
-  agent.test('Logic 5: Pharmacy Checkout - Accurate totals, item descriptions, and Pharmacy invoice creation', () => {
-    const pharmacyCart = [
-      { id: 'med-1', name: 'Paracetamol 500mg', price: 12, qty: 3 },
-      { id: 'med-2', name: 'Pantoprazole 40mg', price: 35, qty: 2 },
-    ];
-
-    const cartTotal = pharmacyCart.reduce((sum, item) => sum + item.price * item.qty, 0);
-    agent.expect(cartTotal).toBe(3 * 12 + 2 * 35); // 36 + 70 = 106
-
-    const newInvoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNo: generateReceiptNo('Pharmacy'),
-      type: 'Pharmacy',
-      patientId: 'pat-1',
-      amount: cartTotal,
-      paymentMode: 'UPI',
-      title: 'Pharmacy Bill',
-      items: pharmacyCart.map((item) => ({
-        description: `${item.name}`,
-        qty: item.qty,
-        rate: item.price,
-        amount: item.price * item.qty,
-      })),
-    };
-
-    agent.expect(newInvoice.amount).toBe(106);
-    agent.expect(newInvoice.type).toBe('Pharmacy');
-    agent.expect(newInvoice.items.length).toBe(2);
-    agent.expect(newInvoice.items[0].description).toBe('Paracetamol 500mg');
-  });
-
-  agent.test('Logic 6: Pathology & Radiology Requisition Invoicing', () => {
-    const selectedLabTests = [
-      { id: 'lab-1', name: 'Complete Blood Count (CBC)', price: 350 },
-      { id: 'lab-2', name: 'Lipid Profile', price: 750 },
-    ];
-    const labTotal = selectedLabTests.reduce((sum, t) => sum + t.price, 0);
-    agent.expect(labTotal).toBe(1100);
-
-    const labInvoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNo: generateReceiptNo('Lab'),
-      type: 'Lab',
-      amount: labTotal,
-      items: selectedLabTests.map((t) => ({ description: t.name, qty: 1, amount: t.price })),
-    };
-    agent.expect(labInvoice.type).toBe('Lab');
-    agent.expect(labInvoice.amount).toBe(1100);
-
-    const selectedScan = { id: 'rad-1', name: 'MRI Brain', price: 6500 };
-    const radInvoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNo: generateReceiptNo('Radiology'),
-      type: 'Radiology',
-      amount: selectedScan.price,
-      items: [{ description: selectedScan.name, qty: 1, amount: selectedScan.price }],
-    };
-    agent.expect(radInvoice.type).toBe('Radiology');
-    agent.expect(radInvoice.amount).toBe(6500);
-  });
-
-  agent.test('Logic 7: AI Assistant Hospital Query Engine - Intent routing & Action Card generation', () => {
-    function processAiMessage(query) {
-      const lower = query.toLowerCase();
-      if (lower.includes('pending bills') || lower.includes('10,000')) {
-        return {
-          text: 'Found 3 patients with pending bills totaling ₹28,500',
-          actionCard: { type: 'invoice', title: 'Pending Invoices Review', route: 'Billing' },
-        };
-      }
-      if (lower.includes('opd collection')) {
-        return {
-          text: "Today's OPD Collection summary: Total Revenue Today: ₹4,82,500",
-          actionCard: { type: 'report', title: 'Financial Daily Breakdown', route: 'FinancialManagement' },
-        };
-      }
-      if (lower.includes('bed') || lower.includes('icu')) {
-        return {
-          text: 'Current Bed Status: ICU: 2 beds available out of 8',
-          actionCard: undefined,
-        };
-      }
-      if (lower.includes('discharge') && lower.includes('ananya')) {
-        return {
-          text: 'Discharge summary prepared for Ananya S',
-          actionCard: { type: 'patient', title: 'Discharge Summary - Ananya S', route: 'DischargeSummary' },
-        };
-      }
-      if (lower.includes('appointment')) {
-        return {
-          text: 'You have 4 appointments scheduled today',
-          actionCard: { type: 'appointment', title: "Today's Schedule", route: 'Appointments' },
-        };
-      }
-      return { text: 'Generic hospital query response', actionCard: undefined };
-    }
-
-    const r1 = processAiMessage('Check pending bills above 10,000');
-    agent.expect(r1.actionCard.route).toBe('Billing');
-
-    const r2 = processAiMessage('Show opd collection for today');
-    agent.expect(r2.actionCard.route).toBe('FinancialManagement');
-
-    const r3 = processAiMessage('ICU bed availability');
-    agent.expect(r3.text).toContain('Current Bed Status');
-
-    const r4 = processAiMessage('Discharge summary for Ananya');
-    agent.expect(r4.actionCard.route).toBe('DischargeSummary');
-
-    const r5 = processAiMessage('What are my appointments today?');
-    agent.expect(r5.actionCard.route).toBe('Appointments');
+  agent.test('Data 7: Safety-critical facts agree across modules (Vikram K penicillin allergy)', () => {
+    const vikram = patientByName(s0, 'Vikram K');
+    agent.expect(H.findProfile(s0, vikram.id).allergies.join(' ')).toMatch(/penicillin/i);
+    agent.expect(s0.prescriptionReviews.find((r) => r.patientId === vikram.id).safetyStatus).toBe('Allergy Warning');
   });
 
   // -----------------------------------------------------------
-  // SUITE 4: Utilities, Formatters & Document Generation
+  // 3. DOMAIN LOGIC (real src/logic/hospital.ts)
+  // -----------------------------------------------------------
+  agent.suite('Hospital Domain Logic (real code)');
+
+  agent.test('Logic 1: Registration bills the NEW patient (regression: receipt used to go to patients[0])', () => {
+    const s = fresh();
+    const { state, result } = H.registerPatient(s, {
+      name: 'Sunil Kumar', phone: '9447122334', dob: '15/08/1984', gender: 'Male',
+      address: 'Aluva, Kochi', bloodGroup: 'B+', insurance: '', allergies: ['Sulfa drugs'],
+    });
+    agent.expect(result.invoice.patientId).toBe(result.patient.id);
+    agent.expect(result.invoice.patientName).toBe('Sunil Kumar');
+    agent.expect(result.invoice.uhid).toBe(result.patient.uhid);
+    agent.expect(result.invoice.invoiceNo).toBe(`REG-${new Date().getFullYear()}-00126`);
+    agent.expect(result.invoice.amount).toBe(500);
+    agent.expect(result.patient.age).toBe(dates.ageFromDob(dates.parseDob('15/08/1984')));
+    agent.expect(result.patient.phone).toBe('+91 94471 22334');
+    agent.expect(result.patient.insurance).toBe('Self Pay');
+    agent.expect(state.patients.length).toBe(s.patients.length + 1);
+    agent.expect(H.findProfile(state, result.patient.id).allergies[0]).toBe('Sulfa drugs');
+    agent.expect(state.notifications[0].title).toBe('New patient registered');
+    agent.expect(H.findDuplicatePatients(state, '94471 22334').length).toBe(1);
+  });
+
+  agent.test('Logic 2: Booking assigns tokens, bills the doctor fee once and blocks double-booking', () => {
+    const s = fresh();
+    const ananya = patientByName(s, 'Ananya S');
+    const arjun = doctorByName(s, 'Dr. Arjun Nair');
+    const date = dates.isoDaysFromToday(7);
+    const first = H.scheduleAppointment(s, { patientId: ananya.id, doctorId: arjun.id, date, time: '11:00 AM', type: 'OPD' });
+    agent.expect(first.result.ok).toBe(true);
+    agent.expect(first.result.invoice.amount).toBe(arjun.fee);
+    agent.expect(first.result.appointment.tokenNo).toBe(1);
+    const clash = H.scheduleAppointment(first.state, { patientId: patientByName(s, 'Rahul Nair').id, doctorId: arjun.id, date, time: '11:00 AM', type: 'OPD' });
+    agent.expect(clash.result.ok).toBe(false);
+    agent.expect(clash.result.error).toBe('SLOT_TAKEN');
+    const slots = H.getAvailableSlots(first.state, arjun.id, date);
+    agent.expect(slots.find((x) => x.time === '11:00 AM').available).toBe(false);
+    const unknown = H.scheduleAppointment(s, { patientId: 'nope', doctorId: arjun.id, date, time: '09:00 AM', type: 'OPD' });
+    agent.expect(unknown.result.error).toBe('UNKNOWN_PATIENT');
+  });
+
+  agent.test('Logic 3: IPD admission allocates a bed, updates census and bills an advance that adds up', () => {
+    const s = fresh();
+    const rahul = patientByName(s, 'Rahul Nair');
+    const icuBefore = s.wardInfo.find((w) => w.type === 'ICU');
+    const { state, result } = H.admitPatient(s, { patientId: rahul.id, roomType: 'ICU', department: 'Cardiology' });
+    agent.expect(result.ok).toBe(true);
+    agent.expect(result.patient.room).toBe(`ICU • Bed ${icuBefore.occupied + 1}`);
+    agent.expect(billing.itemsTotal(result.invoice.items)).toBe(result.invoice.amount);
+    agent.expect(result.invoice.amount).toBe(8500);
+    agent.expect(state.wardInfo.find((w) => w.type === 'ICU').available).toBe(icuBefore.available - 1);
+    agent.expect(H.bedSummary(state).occupied).toBe(H.bedSummary(s).occupied + 1);
+    agent.expect(H.admitPatient(state, { patientId: rahul.id, roomType: 'ICU', department: 'Cardiology' }).result.error).toBe('ALREADY_ADMITTED');
+    // Fill the ICU and prove the next admission is refused
+    let t = state;
+    t = { ...t, wardInfo: t.wardInfo.map((w) => (w.type === 'ICU' ? { ...w, occupied: w.totalBeds, available: 0 } : w)) };
+    agent.expect(H.admitPatient(t, { patientId: patientByName(s, 'Sneha Joseph').id, roomType: 'ICU', department: 'Critical Care' }).result.error).toBe('NO_BED');
+  });
+
+  agent.test('Logic 4: Discharge frees the bed, finalises the summary and reports outstanding dues', () => {
+    const s = fresh();
+    const vikram = patientByName(s, 'Vikram K');
+    const deluxe = s.wardInfo.find((w) => w.id === 'ward-deluxe');
+    const { state, result } = H.dischargePatient(s, vikram.id);
+    agent.expect(result.ok).toBe(true);
+    agent.expect(result.patient.status).toBe('Discharged');
+    agent.expect(result.patient.room).toBe(undefined);
+    agent.expect(state.wardInfo.find((w) => w.id === 'ward-deluxe').occupied).toBe(deluxe.occupied - 1);
+    agent.expect(result.summary.status).toBe('Final');
+    agent.expect(result.outstanding).toBe(4500);
+    agent.expect(H.dischargePatient(state, vikram.id).result.error).toBe('NOT_ADMITTED');
+  });
+
+  agent.test('Logic 5: Pharmacy cart respects stock & expiry and checkout deducts stock with a PH- bill', () => {
+    let s = fresh();
+    const vitD = s.medicines.find((m) => m.name === 'Vitamin D3');
+    const outOfStock = s.medicines.find((m) => m.stock === 0);
+    agent.expect(H.addToCart(s, { id: outOfStock.id, type: 'medicine', name: outOfStock.name, price: outOfStock.price }).result.error).toBe('OUT_OF_STOCK');
+    const expired = { ...s, medicines: s.medicines.map((m) => (m.id === vitD.id ? { ...m, expiry: '01/20' } : m)) };
+    agent.expect(H.addToCart(expired, { id: vitD.id, type: 'medicine', name: vitD.name, price: vitD.price }).result.error).toBe('EXPIRED');
+    for (let i = 0; i < 3; i++) s = H.addToCart(s, { id: vitD.id, type: 'medicine', name: vitD.name, price: vitD.price }).state;
+    agent.expect(H.cartQtyFor(s, vitD.id)).toBe(3);
+    agent.expect(s.medicines.find((m) => m.id === vitD.id).stock).toBe(vitD.stock); // not reserved until billed
+    const { state, result } = H.checkoutPharmacyCart(s, patientByName(s, 'Sneha Joseph').id, 'Cash');
+    agent.expect(result.invoiceNo).toBe(`PH-${new Date().getFullYear()}-00322`);
+    agent.expect(result.amount).toBe(180);
+    agent.expect(state.medicines.find((m) => m.id === vitD.id).stock).toBe(vitD.stock - 3);
+    agent.expect(state.cart.length).toBe(0);
+  });
+
+  agent.test('Logic 6: Lab orders flow into the lab pipeline and abnormal results notify the doctor', () => {
+    const s = fresh();
+    const suresh = patientByName(s, 'Suresh Kumar');
+    const before = H.labPipelineCounts(s);
+    const ordered = H.orderLabTests(s, suresh.id, ['lab-1', 'lab-2'], { paymentMode: 'UPI' });
+    agent.expect(ordered.result.samples.length).toBe(2);
+    agent.expect(ordered.result.invoice.type).toBe('Lab');
+    agent.expect(ordered.result.invoice.amount).toBe(900);
+    agent.expect(H.labPipelineCounts(ordered.state).New).toBe(before.New + 2);
+    const sample = ordered.result.samples[0];
+    const received = H.receiveSample(ordered.state, sample.id);
+    agent.expect(received.result.status).toBe('Processing');
+    const params = H.analyzerResultsFor(sample.testName).map((p) => (p.name === 'Platelets' ? { ...p, value: 42000 } : p));
+    const resulted = H.enterLabResults(received.state, sample.id, params);
+    agent.expect(resulted.result.status).toBe('Abnormal');
+    agent.expect(resulted.state.notifications[0].title).toBe('Critical lab value');
+    agent.expect(clinical.resultsForPatient(resulted.state.labSamples, suresh.id).length).toBeGreaterThanOrEqual(1);
+  });
+
+  agent.test('Logic 7: Consultation stores the visit, closes the appointment without double billing and screens the Rx', () => {
+    const s = fresh();
+    const vikram = patientByName(s, 'Vikram K');
+    const { state, result } = H.saveConsultation(s, {
+      patientId: vikram.id,
+      doctorName: 'Dr. Rajesh Varma',
+      department: 'Orthopedics',
+      symptoms: 'Knee pain, low-grade fever',
+      diagnosis: 'Septic bursitis (suspected)',
+      prescription: [{ name: 'Amoxicillin 500mg', dose: '1 Cap', frequency: 'TDS', duration: '5 days' }],
+      followUpDate: dates.isoDaysFromToday(8),
+    });
+    agent.expect(state.visits[0].id).toBe(result.visit.id);
+    agent.expect(result.invoice).toBe(undefined); // appointment already exists → no second bill
+    agent.expect(state.appointments.find((a) => a.id === 'apt-5').status).toBe('Completed');
+    agent.expect(result.review.safetyStatus).toBe('Allergy Warning');
+    agent.expect(result.review.items[0].qty).toBe(15);
+    agent.expect(result.followUp.type).toBe('Follow Up');
+    agent.expect(result.alerts.some((a) => a.kind === 'allergy')).toBeTruthy();
+    // Walk-in (no appointment today) → one pending consultation bill
+    const walkIn = H.saveConsultation(s, { patientId: patientByName(s, 'Maria Joseph').id, doctorName: 'Dr. Priya Menon', department: 'General Medicine', symptoms: 'Headache', diagnosis: 'Tension headache', prescription: [] });
+    agent.expect(walkIn.result.invoice.status).toBe('Pending');
+    agent.expect(walkIn.result.invoice.amount).toBe(500);
+  });
+
+  agent.test('Logic 8: Dispensing enforces overrides, deducts stock, bills and creates reminders; safer alternative re-screens', () => {
+    const s = fresh();
+    agent.expect(H.dispensePrescription(s, 'rx-1').result.error).toBe('NEEDS_OVERRIDE');
+    const alt = H.applySaferAlternative(s, 'rx-1');
+    agent.expect(alt.result.safetyStatus).toBe('Safe');
+    agent.expect(alt.result.drugs.join(' ')).toContain('Azithromycin');
+    const atorva = s.medicines.find((m) => m.id === 'med-8');
+    const done = H.dispensePrescription(alt.state, 'rx-1');
+    agent.expect(done.result.ok).toBe(true);
+    agent.expect(done.result.invoice.type).toBe('Pharmacy');
+    agent.expect(done.state.medicines.find((m) => m.id === 'med-8').stock).toBe(atorva.stock - 10);
+    agent.expect(done.state.patientReminders.some((r) => r.patientId === 'pat-2')).toBeTruthy();
+    const overridden = H.dispensePrescription(s, 'rx-2', { override: { reason: 'Allergy history verified as mild rash only', by: 'Neethu George' } });
+    agent.expect(overridden.result.ok).toBe(true);
+    agent.expect(overridden.result.review.dosageValidation).toContain('Override by Neethu George');
+    agent.expect(overridden.state.auditLog[0].action).toContain('override');
+  });
+
+  agent.test('Logic 9: Recording vitals flags abnormal values, notifies and completes the vitals task', () => {
+    const s = fresh();
+    const arun = patientByName(s, 'Arun Kumar');
+    const { state, result } = H.recordVitals(s, arun.id, { bp: '128/82', pulse: 112, spo2: 89, temp: 101.2, respRate: 26 });
+    agent.expect(result.flags.some((f) => f.field === 'spo2' && f.severity === 'critical')).toBeTruthy();
+    agent.expect(state.nurseTasks.find((t) => t.id === 'nt-1').completed).toBe(true);
+    agent.expect(state.notifications[0].title).toContain('Abnormal vitals');
+    agent.expect(H.latestVitals(state.vitals, arun.id).id).toBe(result.record.id);
+  });
+
+  agent.test('Logic 10: Invoice numbers are sequential per type and pending bills can be collected', () => {
+    const s = fresh();
+    agent.expect(billing.nextInvoiceNumber(s.invoices, 'OPD', 2026)).toBe('OPD-2026-00892');
+    agent.expect(billing.nextInvoiceNumber(s.invoices, 'Radiology', 2027)).toBe('RAD-2027-00001');
+    const before = H.todayStatsFor(s).todayCollection;
+    agent.expect(before).toBe(482500);
+    const { state, result } = H.markInvoicePaid(s, 'inv-5', 'UPI');
+    agent.expect(result.status).toBe('Paid');
+    agent.expect(H.todayStatsFor(state).todayCollection).toBe(before + 4500);
+    agent.expect(H.todayStatsFor(state).pendingCount).toBe(H.todayStatsFor(s).pendingCount - 1);
+  });
+
+  agent.test('Logic 11: Operations — ambulance dispatch, blood issue and supply indents', () => {
+    let s = fresh();
+    const amb = s.ambulances.find((a) => a.status === 'Available');
+    s = H.dispatchAmbulance(s, amb.id, { pickup: 'Kakkanad', reason: 'Fall injury' }).state;
+    agent.expect(s.ambulances.find((a) => a.id === amb.id).status).toBe('On Trip');
+    s = H.completeAmbulanceTrip(s, amb.id).state;
+    agent.expect(s.ambulances.find((a) => a.id === amb.id).status).toBe('Available');
+    const aPlus = s.bloodStock.find((b) => b.group === 'A+').prbc;
+    const issued = H.issueBlood(s, 'br-1');
+    agent.expect(issued.result.ok).toBe(true);
+    agent.expect(issued.state.bloodStock.find((b) => b.group === 'A+').prbc).toBe(aPlus - 2);
+    const n95 = s.supplies.find((x) => x.id === 'sup-2');
+    const indented = H.raiseIndent(s, 'sup-2', 200);
+    const received = H.receiveIndent(indented.state, 'sup-2');
+    agent.expect(received.result.stock).toBe(n95.stock + 200);
+  });
+
+  // -----------------------------------------------------------
+  // 4. CLINICAL RULES
+  // -----------------------------------------------------------
+  agent.suite('Clinical Rules Engine');
+
+  agent.test('Safety 1: Allergy, interaction, renal-dose and duplicate rules fire with rule citations', () => {
+    const allergy = safety.checkPrescriptionSafety(['Amoxicillin 500mg (TDS)'], { allergies: ['Penicillin (urticaria)'] });
+    agent.expect(allergy[0].kind).toBe('allergy');
+    const ddi = safety.checkPrescriptionSafety(['Clarithromycin 500mg (BD)'], { allergies: [], currentMedications: ['Atorvastatin 10mg (Night)'] });
+    agent.expect(ddi[0].rule).toBe('DDI-014');
+    const renal = safety.checkPrescriptionSafety(['Diclofenac 50mg (BD)'], { allergies: [], egfr: 52 });
+    agent.expect(renal.some((a) => a.kind === 'renal')).toBeTruthy();
+    const dup = safety.checkPrescriptionSafety(['Paracetamol 500mg (TDS)', 'Paracetamol 650mg (SOS)'], { allergies: [] });
+    agent.expect(dup.some((a) => a.kind === 'duplicate')).toBeTruthy();
+    agent.expect(safety.checkPrescriptionSafety(['Paracetamol 500mg (TDS)'], { allergies: [] }).length).toBe(0);
+  });
+
+  agent.test('Clinical 1: Vitals flags follow early-warning thresholds', () => {
+    agent.expect(clinical.vitalsFlags({ bp: '118/76', pulse: 80, spo2: 98, temp: 98.4 }).length).toBe(0);
+    const flags = clinical.vitalsFlags({ bp: '182/112', pulse: 124, spo2: 93, temp: 103.2, respRate: 24 });
+    agent.expect(flags.find((f) => f.field === 'bp').severity).toBe('critical');
+    agent.expect(flags.find((f) => f.field === 'spo2').severity).toBe('warning');
+    agent.expect(flags.find((f) => f.field === 'temp').severity).toBe('critical');
+  });
+
+  agent.test('Clinical 2: Lab trends compare against previous results (Meera HbA1c 8.4 → 9.1 → 10.2, worsening)', () => {
+    const trend = clinical.labTrends(s0.labSamples, 'pat-5').find((t) => t.parameter === 'HbA1c');
+    agent.expect(trend.points.map((p) => p.value).join('→')).toBe('8.4→9.1→10.2');
+    agent.expect(trend.direction).toBe('up');
+    agent.expect(trend.worsening).toBe(true);
+  });
+
+  agent.test('Clinical 3: AI alerts surface abnormal labs, unsafe prescriptions and abnormal vitals, critical first', () => {
+    const alerts = clinical.buildAiAlerts(s0);
+    agent.expect(alerts.length).toBeGreaterThanOrEqual(5);
+    agent.expect(alerts[0].severity).toBe('critical');
+    agent.expect(alerts.some((a) => a.kind === 'Prescription safety' && a.patientName === 'Rahul Nair')).toBeTruthy();
+    agent.expect(alerts.some((a) => a.kind === 'Vitals' && a.patientName === 'Ramanathan G')).toBeTruthy();
+    alerts.forEach((a) => agent.expect(a.source.length).toBeGreaterThan(0));
+  });
+
+  // -----------------------------------------------------------
+  // 5. AI ENGINE
+  // -----------------------------------------------------------
+  agent.suite('MediOS AI Engine');
+
+  agent.test('AI 1: "Pending bills above ₹10,000" answers from live invoices (no invented patients)', () => {
+    const a = ai.answerStaffQuery('Find all patients with pending bills above ₹10,000', s0);
+    agent.expect(a.text).toContain('Sunita Patel');
+    agent.expect(a.text).toContain('George Thomas');
+    agent.expect(a.text).notToContain('Vikram K');
+    agent.expect(a.text).toContain('₹26,500');
+    agent.expect(a.citations[0].label).toContain('Billing ledger');
+    const paid = H.markInvoicePaid(H.markInvoicePaid(s0, 'inv-6', 'Card').state, 'inv-7', 'Card').state;
+    agent.expect(ai.answerStaffQuery('pending bills above 10k', paid).text).toContain('No pending bills');
+  });
+
+  agent.test('AI 2: Intent routing no longer collides on substrings ("prescribed" ≠ bed, Rahul interactions ≠ receipt)', () => {
+    agent.expect(ai.answerStaffQuery("Check Rahul's drug interactions", s0).text).toContain('Medication safety — Rahul Nair');
+    agent.expect(ai.answerStaffQuery('What was prescribed for Rahul?', s0).text).notToContain('bed status');
+    agent.expect(ai.answerStaffQuery("Find the receipt for Rahul's payment yesterday", s0).text).toContain('OPD-2026-00891');
+    agent.expect(ai.answerStaffQuery("Explain Vikram's lab report", s0).text).toContain('Liver Function Test');
+    const dis = ai.answerStaffQuery('Create a discharge summary for Ananya S', s0);
+    agent.expect(dis.text).toContain('Discharge summary');
+    agent.expect(dis.actionCard.route).toBe('/discharge-summary');
+    agent.expect(dis.actionCard.params.patientId).toBe('pat-1');
+    agent.expect(ai.answerStaffQuery('Summarize Meera Krishnan history', s0).text).toContain('Problem List');
+  });
+
+  agent.test('AI 3: Custom cohort query — diabetic patients with abnormal HbA1c', () => {
+    const a = ai.answerStaffQuery('Show all diabetic patients with abnormal HbA1c', s0);
+    agent.expect(a.text).toContain('Meera Krishnan');
+    agent.expect(a.text).toContain('10.2%');
+  });
+
+  agent.test('AI 4: Bed availability and collections come from live state', () => {
+    const beds = ai.answerStaffQuery('Show bed availability in ICU', s0);
+    agent.expect(beds.text).toContain('2 available of 8');
+    const col = ai.answerStaffQuery("Generate today's OPD collection report", s0);
+    agent.expect(col.text).toContain('₹4,82,500');
+  });
+
+  agent.test('AI 5: Protocol search returns the matching SOP with a citation', () => {
+    const a = ai.answerStaffQuery('dengue protocol platelet threshold', s0);
+    agent.expect(a.text).toContain('Dengue');
+    agent.expect(a.citations[0].label).toContain('proto-5');
+  });
+
+  agent.test('AI 6: Unknown questions get an honest "not found", not a fabricated answer', () => {
+    const a = ai.answerStaffQuery('What is the weather in Paris?', s0);
+    agent.expect(a.text).toContain("couldn't match");
+  });
+
+  agent.test('AI 7: Patient assistant handles navigation, reports, red-flag symptoms and booking', () => {
+    agent.expect(ai.answerPatientQuery('Where is the laboratory?', s0, 'pat-1').text).toContain('Laboratory');
+    agent.expect(ai.answerPatientQuery('Explain my latest report', s0, 'pat-1').text).toContain('Complete Blood Count');
+    agent.expect(ai.answerPatientQuery('I have chest pain and feel breathless', s0, 'pat-1').text).toContain('emergency');
+    agent.expect(ai.answerPatientQuery('Book an appointment', s0, 'pat-1').actionCard.route).toBe('/book-appointment');
+  });
+
+  // -----------------------------------------------------------
+  // 6. UTILITIES & DOCUMENTS
   // -----------------------------------------------------------
   agent.suite('Utilities, Formatters & Document Generation');
 
-  agent.test('Util 1: formatCurrency produces correct Indian Rupee format across ranges', () => {
-    agent.expect(formatCurrency(0)).toBe('₹0');
-    agent.expect(formatCurrency(12)).toBe('₹12');
-    agent.expect(formatCurrency(500)).toBe('₹500');
-    agent.expect(formatCurrency(1200)).toBe('₹1,200');
-    agent.expect(formatCurrency(28500)).toBe('₹28,500');
-    agent.expect(formatCurrency(477450)).toBe('₹4,77,450');
+  agent.test('Util 1: formatCurrency uses Indian grouping, decimals on request and signs negatives', () => {
+    agent.expect(fmt.formatCurrency(482500)).toBe('₹4,82,500');
+    agent.expect(fmt.formatCurrency(1500000)).toBe('₹15,00,000');
+    agent.expect(fmt.formatCurrency(500, { decimals: 2 })).toBe('₹500.00');
+    agent.expect(fmt.formatCurrency(-16000)).toBe('-₹16,000');
+    agent.expect(fmt.formatCompactCurrency(4825000)).toBe('₹48.3L');
   });
 
-  agent.test('Util 2: formatDate & formatTime handle string, Date object, and empty values', () => {
-    const dStr = formatDate('2026-09-25T12:00:00Z');
-    agent.expect(dStr).toContain('Sep');
-    agent.expect(dStr).toContain('2026');
-
-    agent.expect(formatDate(undefined)).toBe('');
-    agent.expect(formatTime(undefined)).toBe('');
-
-    const tStr = formatTime('2026-09-25T10:15:00Z');
-    agent.expect(tStr.length).toBeGreaterThan(0);
+  agent.test('Util 2: numberToWords handles lakhs, crores and paise', () => {
+    agent.expect(fmt.numberToWords(500)).toBe('Five Hundred Rupees Only');
+    agent.expect(fmt.numberToWords(1234.5)).toBe('One Thousand Two Hundred Thirty Four Rupees and Fifty Paise Only');
+    agent.expect(fmt.numberToWords(12500000)).toBe('One Crore Twenty Five Lakh Rupees Only');
+    agent.expect(fmt.numberToWords(0)).toBe('Zero Rupees Only');
   });
 
-  agent.test('Util 3: numberToWords accurately converts Indian denominations (Hundreds, Thousands, Lakhs, Crores)', () => {
-    agent.expect(numberToWords(0)).toBe('Zero Rupees Only');
-    agent.expect(numberToWords(12)).toBe('Twelve Rupees Only');
-    agent.expect(numberToWords(500)).toBe('Five Hundred Rupees Only');
-    agent.expect(numberToWords(1200)).toBe('One Thousand Two Hundred Rupees Only');
-    agent.expect(numberToWords(28500)).toBe('Twenty Eight Thousand Five Hundred Rupees Only');
-    agent.expect(numberToWords(150000)).toBe('One Lakh Fifty Thousand Rupees Only');
-    agent.expect(numberToWords(25000000)).toBe('Two Crore Fifty Lakh Rupees Only');
+  agent.test('Util 3: Date helpers — relative labels, DOB validation and age', () => {
+    agent.expect(dates.relativeDayLabel(dates.todayISO())).toBe('Today');
+    agent.expect(dates.relativeDayLabel(dates.isoDaysFromToday(1))).toBe('Tomorrow');
+    agent.expect(dates.parseDob('31/02/1990')).toBe(null);
+    agent.expect(dates.parseDob('01/01/2999')).toBe(null);
+    const dob = dates.parseDob('14/04/1993');
+    agent.expect(dates.ageFromDob(dob, new Date(2026, 8, 26))).toBe(33);
+    agent.expect(dates.clockToMinutes('01:30 PM')).toBe(810);
+    agent.expect(dates.formatDisplayDate('2026-09-26')).toBe('26 Sep 2026');
   });
 
-  agent.test('Util 4: generateUHID format compliance and collision resistance across 1,000 iterations', () => {
-    const currentYear = new Date().getFullYear();
-    const uhidSet = new Set();
-
-    for (let i = 0; i < 1000; i++) {
-      const uhid = generateUHID();
-      agent.expect(uhid).toMatch(new RegExp(`^CC${currentYear}\\d{5}$`));
-      uhidSet.add(uhid);
-    }
-    // High entropy check: >98% unique IDs in 1000 iterations
-    agent.expect(uhidSet.size).toBeGreaterThanOrEqual(980);
-  });
-
-  agent.test('Util 5: generateReceiptNo prefixing and year stamping', () => {
-    const prefixes = ['REG', 'OPD', 'IPD', 'Pharmacy', 'Lab', 'Radiology'];
-    const currentYear = new Date().getFullYear();
-
-    prefixes.forEach((pref) => {
-      const receiptNo = generateReceiptNo(pref);
-      agent.expect(receiptNo).toMatch(new RegExp(`^${pref}-${currentYear}-\\d{5}$`));
+  agent.test('Util 4: Receipt HTML escapes user input and never prints a pending bill as paid', () => {
+    const html = pdf.generateReceiptHtml({
+      receiptNo: 'IPD-2026-00078', receiptType: 'IPD Receipt', date: '26 Sep 2026', patientName: 'Ravi <K>',
+      uhid: 'CC202600170', paymentMode: 'Card', amount: 4500, status: 'Pending',
     });
+    agent.expect(html).toContain('Ravi &lt;K&gt;');
+    agent.expect(html).notToContain('Ravi <K>');
+    agent.expect(html).toContain('Amount Due');
+    agent.expect(html).toContain('>DUE<');
+    const paid = pdf.generateReceiptHtml({ receiptNo: 'REG-1', receiptType: 'Registration Receipt', date: 'x', patientName: 'A', uhid: 'U', paymentMode: 'UPI', amount: 500 });
+    agent.expect(paid).toContain('Amount Paid');
+    agent.expect(paid).toContain('Five Hundred Rupees Only');
+    agent.expect(billing.receiptHeading({ type: 'REG', title: 'Registration Fee' })).toBe('Registration Receipt');
   });
 
-  agent.test('Util 6: Medical Receipt HTML Generator produces compliant invoice layout with GSTIN and signature', () => {
-    function generateHtml(data) {
-      const itemsHtml = data.items && data.items.length > 0
-        ? `<table>${data.items.map((i) => `<tr><td>${i.description}</td><td>${i.amount}</td></tr>`).join('')}</table>`
-        : '';
-
-      return `
-        <!DOCTYPE html>
-        <html>
-          <body>
-            <div class="hospital-name">City Care Multispecialty Hospital</div>
-            <div class="gstin">GSTIN: 32ABCDE1234F1Z5</div>
-            <div class="receipt-no">${data.receiptNo}</div>
-            <div class="patient-info">${data.patientName} (${data.uhid})</div>
-            ${itemsHtml}
-            <div class="amount">₹${data.amount}</div>
-            <div class="words">${numberToWords(data.amount)}</div>
-            <div class="sign">Authorized Signatory</div>
-          </body>
-        </html>
-      `;
-    }
-
-    const html = generateHtml({
-      receiptNo: 'OPD-2026-00441',
-      patientName: 'Ananya S',
-      uhid: 'CC202500125',
-      amount: 600,
-      items: [{ description: 'Specialist Consultation', amount: 600 }],
+  agent.test('Util 5: Clinical documents render sections, tables and signatory', () => {
+    const html = pdf.generateDocumentHtml({
+      title: 'Discharge Summary',
+      meta: [['Patient', 'Ananya S']],
+      sections: [
+        { heading: 'Diagnosis', paragraphs: ['Acute viral fever'] },
+        { heading: 'Medication', table: { columns: ['Drug', 'Dose'], rows: [['Paracetamol', 'TDS']] } },
+      ],
+      signatory: 'Dr. Priya Menon',
     });
+    agent.expect(html).toContain('Acute viral fever');
+    agent.expect(html).toContain('Paracetamol');
+    agent.expect(html).toContain('Dr. Priya Menon');
+  });
 
-    agent.expect(html).toContain('City Care Multispecialty Hospital');
-    agent.expect(html).toContain('GSTIN: 32ABCDE1234F1Z5');
-    agent.expect(html).toContain('OPD-2026-00441');
-    agent.expect(html).toContain('Ananya S');
-    agent.expect(html).toContain('CC202500125');
-    agent.expect(html).toContain('Six Hundred Rupees Only');
-    agent.expect(html).toContain('Authorized Signatory');
+  agent.test('Util 6: Role-based access — admins see everything, nurses cannot open billing, patients only their app', () => {
+    agent.expect(access.canAccess('admin', 'financial-management')).toBe(true);
+    agent.expect(access.canAccess('nurse', 'nurse-portal')).toBe(true);
+    agent.expect(access.canAccess('nurse', 'billing')).toBe(false);
+    agent.expect(access.canAccess('patient', 'doctor-copilot')).toBe(false);
+    agent.expect(access.PORTAL_FOR_ROLE.admin).toBe('/admin-portal');
+  });
+
+  agent.test('Util 7: Every report definition builds from live state', () => {
+    if (!reports) throw new Error('src/logic/reports.ts is missing');
+    MD.REPORT_DEFINITIONS.forEach((d) => {
+      const r = reports.buildReport(d.id, s0);
+      if (!r) throw new Error(`Report ${d.id} returned nothing`);
+      if (!Array.isArray(r.columns) || !Array.isArray(r.rows)) throw new Error(`Report ${d.id} is malformed`);
+      r.rows.forEach((row) => agent.expect(row.length).toBe(r.columns.length));
+    });
+    agent.expect(reports.buildReport('does-not-exist', s0)).toBe(null);
   });
 
   // -----------------------------------------------------------
-  // SUITE 5: Component & UI Contract Validation
+  // 7. COMPONENT CONTRACTS
   // -----------------------------------------------------------
   agent.suite('Component & UI Contract Validation');
 
-  agent.test('UI 1: All 10 modular common components exist and export valid React components', () => {
-    const commonComponents = [
-      'src/components/common/Header.tsx',
-      'src/components/common/Button.tsx',
-      'src/components/common/SearchBar.tsx',
-      'src/components/common/FilterTabs.tsx',
-      'src/components/common/Badge.tsx',
-      'src/components/common/Avatar.tsx',
-      'src/components/common/StatCard.tsx',
-      'src/components/common/Card.tsx',
-      'src/components/common/EmptyState.tsx',
-      'src/components/receipt/ReceiptCard.tsx',
-    ];
-
-    commonComponents.forEach((cp) => {
-      const exists = fs.existsSync(cp);
-      if (!exists) throw new Error(`Missing common component: ${cp}`);
-      const content = fs.readFileSync(cp, 'utf8');
-      agent.expect(content).toContain('export const');
+  agent.test('UI 1: Shared components exist and export React components', () => {
+    [
+      'Header', 'Button', 'SearchBar', 'FilterTabs', 'Badge', 'Avatar', 'StatCard', 'Card', 'EmptyState',
+      'BottomSheet', 'PatientPicker', 'BottomActionBar', 'KeyboardAware', 'Motion', 'SectionHeader', 'CustomAlert', 'RoleSwitcher',
+    ].forEach((name) => {
+      const f = `src/components/common/${name}.tsx`;
+      if (!fs.existsSync(f)) throw new Error(`Missing ${f}`);
+      agent.expect(read(f)).toMatch(/export (const|function)/);
     });
-    agent.expect(commonComponents.length).toBe(10);
   });
 
-  agent.test('UI 2: Header component supports back action, title, and right custom actions', () => {
-    const headerContent = fs.readFileSync('src/components/common/Header.tsx', 'utf8');
-    agent.expect(headerContent).toContain('interface HeaderProps');
-    agent.expect(headerContent).toContain('showBack?: boolean');
-    agent.expect(headerContent).toContain('rightAction?: React.ReactNode');
+  agent.test('UI 2: Motion primitives are available to every screen', () => {
+    const motion = read('src/components/common/Motion.tsx');
+    ['FadeInView', 'PressableScale', 'AnimatedNumber', 'ProgressFill', 'GrowColumn', 'PulseDot', 'TypingDots', 'Skeleton', 'useReducedMotion'].forEach((x) =>
+      agent.expect(motion).toContain(`export const ${x}`)
+    );
   });
 
-  agent.test('UI 3: Button component supports primary, secondary, outline, danger variants and sizes', () => {
-    const buttonContent = fs.readFileSync('src/components/common/Button.tsx', 'utf8');
-    agent.expect(buttonContent).toContain('variant?:');
-    agent.expect(buttonContent).toContain('size?:');
-    agent.expect(buttonContent).toContain('loading?:');
+  agent.test('UI 3: Header supports back, title and right actions and falls back home on deep links', () => {
+    const header = read('src/components/common/Header.tsx');
+    agent.expect(header).toContain('showBack?: boolean');
+    agent.expect(header).toContain('rightAction?: React.ReactNode');
+    agent.expect(header).toContain("router.replace('/(tabs)')");
   });
 
-  agent.test('UI 4: FilterTabs component supports active state selection and custom pill styles', () => {
-    const filterContent = fs.readFileSync('src/components/common/FilterTabs.tsx', 'utf8');
-    agent.expect(filterContent).toContain('tabs: string[]');
-    agent.expect(filterContent).toContain('activeTab: string');
-    agent.expect(filterContent).toContain('onSelectTab:');
+  agent.test('UI 4: Status badges share one mapping (Completed is never shown as "Not Arrived")', () => {
+    const badge = read('src/components/common/Badge.tsx');
+    agent.expect(badge).toContain('export const statusVariant');
+    agent.expect(badge).toMatch(/case 'Completed':/);
   });
 
-  agent.test('UI 5: ReceiptCard component displays formatted invoice details, badge status, and download/share actions', () => {
-    const rcContent = fs.readFileSync('src/components/receipt/ReceiptCard.tsx', 'utf8');
-    agent.expect(rcContent).toContain('interface ReceiptCardProps');
-    agent.expect(rcContent).toContain('receiptNo: string');
-    agent.expect(rcContent).toContain('receiptType: string');
-    agent.expect(rcContent).toContain('amount: number');
-  });
-
-  // -----------------------------------------------------------
-  // SUMMARY REPORT
-  // -----------------------------------------------------------
   const success = agent.summary();
-  if (!success) {
-    process.exit(1);
-  }
+  if (!success) process.exit(1);
 }
 
 run();

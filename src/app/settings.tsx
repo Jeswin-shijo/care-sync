@@ -1,217 +1,173 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  Alert,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useApp } from '../context/AppContext';
+import { useToast } from '../context/ToastContext';
+import { ROLE_LABEL } from '../logic/access';
 import { colors, radius, shadows, spacing, typography } from '../constants/theme';
-import { HOSPITAL_CONFIG } from '../constants/config';
 import { Header } from '../components/common/Header';
+import { FadeInView, PressableScale, stagger } from '../components/common/Motion';
+import { SettingsGroup, SettingsRow, ToggleRow } from '../components/shell/SettingsRow';
+import { languageLabel } from '../components/shell/settings/LanguageSection';
+import { APP_VERSION_LABEL } from '../components/shell/appInfo';
+import { useScrollBottomPadding } from '../components/shell/layout';
+
+const open = (section: string) => () => router.push({ pathname: '/settings/[section]', params: { section } });
 
 export default function SettingsRoute() {
-  const [pushEnabled, setPushEnabled] = useState(true);
+  const { hospitalProfile, settings, updateSettings, departments, staff, branches, activeRole, auditLog } = useApp();
+  const { showToast } = useToast();
+  const bottomPad = useScrollBottomPadding();
 
-  const handleProfilePress = () => {
-    Alert.alert(
-      HOSPITAL_CONFIG.name,
-      `Address: ${HOSPITAL_CONFIG.address}\nGSTIN: ${HOSPITAL_CONFIG.gstin}\nPhone: ${HOSPITAL_CONFIG.phone}\nEmail: ${HOSPITAL_CONFIG.email}`,
-      [{ text: 'Close', style: 'cancel' }]
-    );
-  };
+  const onDuty = staff.filter((s) => s.status === 'On Duty').length;
+  const modes = Object.values(settings.paymentModes).filter(Boolean).length;
+  const channels = [settings.smsAlerts && 'SMS', settings.whatsappAlerts && 'WhatsApp', settings.emailReports && 'Email'].filter(Boolean);
 
-  const handleBillingPress = () => {
-    Alert.alert(
-      'Billing & GST Settings',
-      'Configured: Standard 18% GST on room suites above ₹5,000. Exempt on OPD consultation fees and essential medicines.',
-      [{ text: 'OK' }]
-    );
-  };
-
-  const handleBranchPress = () => {
-    Alert.alert(
-      'Hospital Branches',
-      '1. City Care Main Multispecialty (Kakkanad, Kochi - Active)\n2. City Care Clinic (Marine Drive, Kochi - Active)',
-      [{ text: 'OK' }]
-    );
+  const toggleNotifications = (next: boolean) => {
+    updateSettings({ notificationsEnabled: next });
+    showToast({
+      type: next ? 'success' : 'info',
+      message: next ? 'Notifications turned on' : 'Notifications paused — critical alerts still appear in MediOS AI Alerts',
+    });
   };
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <Header title="Settings" showBack />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Hospital Settings Section */}
-        <Text style={styles.sectionHeader}>Hospital Settings</Text>
-        <View style={styles.cardGroup}>
-          <TouchableOpacity style={styles.settingItem} onPress={handleProfilePress}>
-            <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
-              <Ionicons name="business" size={18} color="#1E6BFF" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Hospital Profile</Text>
-              <Text style={styles.settingSub}>Name, address, GST, logo</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() => router.push('/receipt-templates')}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}>
+        {/* Hospital identity */}
+        <FadeInView>
+          <PressableScale
+            onPress={open('hospital-profile')}
+            scaleTo={0.98}
+            style={styles.profileCard}
+            accessibilityRole="button"
+            accessibilityLabel={`${hospitalProfile.name}, ${hospitalProfile.address}. Edit hospital profile`}
           >
-            <View style={[styles.iconBox, { backgroundColor: '#F5F3FF' }]}>
-              <Ionicons name="receipt" size={18} color="#8B5CF6" />
+            <View style={styles.logo}>
+              <Ionicons name="add" size={26} color="#FFFFFF" />
             </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Receipt Templates</Text>
-              <Text style={styles.settingSub}>Customize templates & numbering</Text>
+            <View style={styles.profileText}>
+              <Text style={styles.profileName} numberOfLines={2}>
+                {hospitalProfile.name}
+              </Text>
+              <Text style={styles.profileMeta} numberOfLines={1}>
+                {hospitalProfile.address}
+              </Text>
+              <Text style={styles.profileMeta} numberOfLines={1}>
+                GSTIN {hospitalProfile.gstin} • {ROLE_LABEL[activeRole]}
+              </Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+            <View style={styles.editPill}>
+              <Ionicons name="create-outline" size={14} color={colors.primary} />
+              <Text style={styles.editText}>Edit</Text>
+            </View>
+          </PressableScale>
+        </FadeInView>
 
-          <View style={styles.divider} />
-
-          <TouchableOpacity style={styles.settingItem} onPress={handleBillingPress}>
-            <View style={[styles.iconBox, { backgroundColor: '#ECFDF5' }]}>
-              <Ionicons name="card" size={18} color="#10B981" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Billing Settings</Text>
-              <Text style={styles.settingSub}>Tax, GST, payment methods</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() =>
-              Alert.alert(
-                'Departments',
-                'General Medicine, Cardiology, Orthopedics, Gynecology, Pediatrics, Dermatology, ICU, Pathology, Radiology.'
-              )
-            }
-          >
-            <View style={[styles.iconBox, { backgroundColor: '#FFFBEB' }]}>
-              <Ionicons name="medical" size={18} color="#F59E0B" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Departments</Text>
-              <Text style={styles.settingSub}>Manage departments & services</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() =>
-              Alert.alert(
-                'Users & Staff Roles',
-                '1. Dr. Priya Menon (Chief Medical Officer / Admin)\n2. Dr. Arjun Nair (Consultant Cardiologist)\n3. Staff Nurse Desk (OPD Billing & Triage)'
-              )
-            }
-          >
-            <View style={[styles.iconBox, { backgroundColor: '#EEF2FF' }]}>
-              <Ionicons name="people" size={18} color="#6366F1" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Users & Roles</Text>
-              <Text style={styles.settingSub}>Staff access & permissions</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity style={styles.settingItem} onPress={handleBranchPress}>
-            <View style={[styles.iconBox, { backgroundColor: '#F0FDFA' }]}>
-              <Ionicons name="git-branch" size={18} color="#0D9488" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Branches</Text>
-              <Text style={styles.settingSub}>Multi-branch management</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* App Settings Section */}
-        <Text style={styles.sectionHeader}>App Settings</Text>
-        <View style={styles.cardGroup}>
-          <View style={styles.settingItem}>
-            <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
-              <Ionicons name="notifications" size={18} color="#1E6BFF" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Notifications</Text>
-              <Text style={styles.settingSub}>Payment alerts, appointment reminders</Text>
-            </View>
-            <Switch
-              value={pushEnabled}
-              onValueChange={setPushEnabled}
-              trackColor={{ false: colors.border, true: colors.primaryLight }}
-              thumbColor={pushEnabled ? colors.primary : '#FFFFFF'}
+        <FadeInView delay={stagger(1)}>
+          <SettingsGroup title="Hospital Settings">
+            <SettingsRow icon="business" title="Hospital Profile" subtitle="Name, address, GST, logo" onPress={open('hospital-profile')} />
+            <SettingsRow
+              icon="git-network"
+              iconColor="#F59E0B"
+              iconBg="#FFFBEB"
+              title="Departments"
+              subtitle={`Manage departments & services • ${departments.length} active`}
+              onPress={open('departments')}
             />
-          </View>
+            <SettingsRow
+              icon="people"
+              iconColor="#6366F1"
+              iconBg="#EEF2FF"
+              title="Users & Roles"
+              subtitle={`Doctors & staff access • ${onDuty}/${staff.length} on duty`}
+              onPress={open('users-roles')}
+            />
+            <SettingsRow
+              icon="card"
+              iconColor="#10B981"
+              iconBg="#ECFDF5"
+              title="Billing Settings"
+              subtitle={`Tax, GST, payment methods • GST ${settings.gstPercent}%, ${modes} modes`}
+              onPress={open('billing')}
+            />
+            <SettingsRow
+              icon="receipt"
+              iconColor="#8B5CF6"
+              iconBg="#F5F3FF"
+              title="Receipt Templates"
+              subtitle="Customize templates & numbering"
+              onPress={() => router.push('/receipt-templates')}
+            />
+            <SettingsRow
+              icon="location"
+              iconColor="#0D9488"
+              iconBg="#F0FDFA"
+              title="Branches"
+              subtitle={`Multi-branch management • ${branches.length} locations`}
+              onPress={open('branches')}
+            />
+          </SettingsGroup>
+        </FadeInView>
 
-          <View style={styles.divider} />
+        <FadeInView delay={stagger(2)}>
+          <SettingsGroup title="App Settings">
+            <ToggleRow
+              icon={settings.notificationsEnabled ? 'notifications' : 'notifications-off'}
+              title="Notifications"
+              subtitle={
+                settings.notificationsEnabled
+                  ? `Payment alerts, reminders${channels.length ? ` • ${channels.join(', ')}` : ''}`
+                  : 'Paused'
+              }
+              value={settings.notificationsEnabled}
+              onValueChange={toggleNotifications}
+              onPress={open('notifications')}
+            />
+            <SettingsRow
+              icon="language"
+              iconColor="#64748B"
+              iconBg="#F1F5F9"
+              title="Language"
+              subtitle={languageLabel(settings.language)}
+              onPress={open('language')}
+            />
+          </SettingsGroup>
+        </FadeInView>
 
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() =>
-              Alert.alert('Language', 'CareSync currently operates in English (US/UK). Regional Indian languages support in roadmap.')
-            }
-          >
-            <View style={[styles.iconBox, { backgroundColor: '#F1F5F9' }]}>
-              <Ionicons name="globe" size={18} color="#64748B" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Language</Text>
-              <Text style={styles.settingSub}>English (Default)</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
+        <FadeInView delay={stagger(3)}>
+          <SettingsGroup title="Security & Compliance">
+            <SettingsRow
+              icon="shield-checkmark"
+              iconColor="#047857"
+              iconBg="#ECFDF5"
+              title="Security & Compliance"
+              subtitle={`Role-based access • audit log (${auditLog.length}) • DPDP / HIPAA-ready`}
+              onPress={open('security')}
+            />
+          </SettingsGroup>
+        </FadeInView>
 
-          <View style={styles.divider} />
+        <FadeInView delay={stagger(4)}>
+          <SettingsGroup title="Support">
+            <SettingsRow
+              icon="help-buoy"
+              iconColor="#EC4899"
+              iconBg="#FDF2F8"
+              title="Help & Support"
+              subtitle="FAQs, contact the help desk, raise a ticket"
+              onPress={() => router.push('/help-support')}
+            />
+          </SettingsGroup>
+        </FadeInView>
 
-          <TouchableOpacity
-            style={styles.settingItem}
-            onPress={() =>
-              Alert.alert(
-                'Help & Support',
-                '24/7 CareSync SaaS Technical Desk: support@caresync.health\nToll Free: 1800 234 5678'
-              )
-            }
-          >
-            <View style={[styles.iconBox, { backgroundColor: '#FDF2F8' }]}>
-              <Ionicons name="help-buoy" size={18} color="#EC4899" />
-            </View>
-            <View style={styles.settingTextCol}>
-              <Text style={styles.settingTitle}>Help & Support</Text>
-              <Text style={styles.settingSub}>Documentation, chat support</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-
-        {/* App Version Info */}
         <View style={styles.versionFooter}>
-          <Text style={styles.versionText}>CareSync SaaS v1.0.0 (Build 57)</Text>
-          <Text style={styles.versionSub}>Google DeepMind Agentic Edition • Cloud Ready</Text>
+          <Text style={styles.versionText}>{APP_VERSION_LABEL}</Text>
+          <Text style={styles.versionSub}>{hospitalProfile.name}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -221,73 +177,71 @@ export default function SettingsRoute() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: colors.background,
   },
   scrollContent: {
     paddingHorizontal: spacing.base,
     paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
   },
-  sectionHeader: {
-    fontSize: 12,
-    fontWeight: typography.fontWeights.bold,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-    marginTop: spacing.md,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  cardGroup: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    overflow: 'hidden',
-    marginBottom: spacing.sm,
-    ...shadows.sm,
-  },
-  settingItem: {
+  profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.md,
     gap: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.sm,
   },
-  iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.md,
+  logo: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  settingTextCol: {
+  profileText: {
     flex: 1,
+    minWidth: 0,
   },
-  settingTitle: {
-    fontSize: typography.fontSizes.sm,
+  profileName: {
+    fontSize: typography.fontSizes.md,
     fontWeight: typography.fontWeights.bold,
     color: colors.text,
   },
-  settingSub: {
-    fontSize: 11,
+  profileMeta: {
+    fontSize: typography.fontSizes.xs + 0.5,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  divider: {
-    height: 1,
-    backgroundColor: colors.borderLight,
-    marginLeft: 56,
+  editPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    minHeight: 32,
+    borderRadius: radius.full,
+    backgroundColor: colors.primaryLight,
+  },
+  editText: {
+    fontSize: typography.fontSizes.xs + 1,
+    fontWeight: typography.fontWeights.bold,
+    color: colors.primary,
   },
   versionFooter: {
     alignItems: 'center',
-    marginVertical: spacing.xl,
+    marginTop: spacing.xl,
   },
   versionText: {
-    fontSize: 12,
+    fontSize: typography.fontSizes.xs + 1,
     fontWeight: typography.fontWeights.semiBold,
     color: colors.textSecondary,
   },
   versionSub: {
-    fontSize: 11,
+    fontSize: typography.fontSizes.xs,
     color: colors.textMuted,
     marginTop: 2,
   },

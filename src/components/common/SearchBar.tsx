@@ -15,6 +15,7 @@ interface SearchBarProps {
   placeholder?: string;
   onClear?: () => void;
   style?: ViewStyle;
+  autoFocus?: boolean;
 }
 
 export const SearchBar: React.FC<SearchBarProps> = ({
@@ -23,6 +24,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = 'Search...',
   onClear,
   style,
+  autoFocus,
 }) => {
   return (
     <View style={[styles.container, style]}>
@@ -34,6 +36,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         placeholderTextColor={colors.textMuted}
         style={styles.input}
         returnKeyType="search"
+        autoFocus={autoFocus}
         autoCapitalize="none"
         autoCorrect={false}
       />

@@ -94,48 +94,32 @@ export function deduceAlertType(
   title: string,
   message?: string
 ): { type: AlertType; icon: keyof typeof Ionicons.glyphMap } {
+  // The title decides errors/warnings; the message only refines success icons.
+  // (A success message that happens to say "required" must not look like an error.)
+  const t = title.toLowerCase();
   const combined = `${title} ${message || ''}`.toLowerCase();
 
-  if (combined.includes('cart') && combined.includes('empty')) {
+  if (/error|invalid|failed|unable|not allowed|denied|restricted|critical/.test(t)) {
+    return { type: 'danger', icon: 'close-circle-outline' };
+  }
+  if (/empty/.test(t) && combined.includes('cart')) {
     return { type: 'warning', icon: 'cart-outline' };
   }
-  if (
-    combined.includes('generated') ||
-    combined.includes('registered') ||
-    combined.includes('booked') ||
-    combined.includes('admitted') ||
-    combined.includes('discharged') ||
-    combined.includes('success')
-  ) {
-    if (combined.includes('bill') || combined.includes('receipt') || combined.includes('invoice')) {
+  if (/warning|select|missing|required|attention|confirm|override|discard|leave|delete|remove|cancel|unsaved|already|no bed|not admitted|out of stock|expired/.test(t)) {
+    return { type: 'warning', icon: 'alert-circle-outline' };
+  }
+  if (/generated|registered|booked|admitted|discharged|success|saved|sent|dispensed|approved|collected|paid|scheduled|recorded|issued|dispatched|done|complete/.test(t)) {
+    if (/bill|receipt|invoice|payment|paid|collected/.test(combined)) {
       return { type: 'success', icon: 'receipt-outline' };
     }
-    if (combined.includes('patient') || combined.includes('registered')) {
+    if (/registered|patient/.test(t)) {
       return { type: 'success', icon: 'person-add-outline' };
     }
-    if (combined.includes('appointment')) {
+    if (/appointment|booked|scheduled/.test(combined)) {
       return { type: 'success', icon: 'calendar-outline' };
     }
     return { type: 'success', icon: 'checkmark-circle-outline' };
   }
-  if (
-    combined.includes('error') ||
-    combined.includes('invalid') ||
-    combined.includes('failed') ||
-    combined.includes('required')
-  ) {
-    return { type: 'danger', icon: 'close-circle-outline' };
-  }
-  if (
-    combined.includes('warning') ||
-    combined.includes('select') ||
-    combined.includes('empty') ||
-    combined.includes('missing') ||
-    combined.includes('attention')
-  ) {
-    return { type: 'warning', icon: 'alert-circle-outline' };
-  }
-
   return { type: 'info', icon: 'information-circle-outline' };
 }
 
@@ -207,15 +191,17 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({
 
   const handleButtonPress = (btn: AlertButton) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    if (btn.onPress) {
-      btn.onPress();
-    }
+    // Close first: if the handler opens another Alert, that one must win.
     if (onClose) {
       onClose();
     }
+    if (btn.onPress) {
+      btn.onPress();
+    }
   };
 
-  const isDualButton = effectiveButtons.length === 2;
+  // Side-by-side only when both labels are short; long labels stack so they never wrap.
+  const isDualButton = effectiveButtons.length === 2 && effectiveButtons.every((b) => b.text.length <= 14);
 
   return (
     <Modal
@@ -251,7 +237,9 @@ export const CustomAlert: React.FC<CustomAlertProps> = ({
 
               {/* Title & Description */}
               <Text style={styles.title}>{title}</Text>
-              {message ? <Text style={styles.message}>{message}</Text> : null}
+              {message ? (
+                <Text style={[styles.message, /\n\s*[•\-\d]/.test(message) && styles.messageList]}>{message}</Text>
+              ) : null}
 
               {/* Action Buttons */}
               <View
@@ -351,6 +339,10 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 8,
     marginBottom: 24,
+  },
+  messageList: {
+    textAlign: 'left',
+    alignSelf: 'stretch',
   },
   buttonContainer: {
     width: '100%',

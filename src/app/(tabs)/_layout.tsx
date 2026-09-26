@@ -1,9 +1,15 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs } from 'expo-router/js-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Platform } from 'react-native';
+import { ColorValue, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, shadows, typography } from '../../constants/theme';
+
+type IconName = keyof typeof Ionicons.glyphMap;
+
+const tabIcon =
+  (active: IconName, inactive: IconName) =>
+  ({ color, focused }: { color: ColorValue; focused: boolean }) => <Ionicons name={focused ? active : inactive} size={22} color={color} />;
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -13,66 +19,54 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
+        // Forms inside tabs (AI chat, search) need the space; the bar returns when the keyboard closes.
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textMuted,
-        tabBarStyle: [
-          styles.tabBar,
-          {
-            height: 58 + bottomInset,
-            paddingBottom: bottomInset,
-          },
-        ],
+        tabBarStyle: [styles.tabBar, { height: 58 + bottomInset, paddingBottom: bottomInset }],
         tabBarLabelStyle: styles.tabBarLabel,
         tabBarItemStyle: styles.tabBarItem,
+        sceneStyle: { backgroundColor: colors.background },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={22} color={color} />
-          ),
+          tabBarAccessibilityLabel: 'Home, hospital dashboard',
+          tabBarIcon: tabIcon('home', 'home-outline'),
         }}
       />
       <Tabs.Screen
         name="patients"
         options={{
           title: 'Patients',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'people' : 'people-outline'} size={22} color={color} />
-          ),
+          tabBarAccessibilityLabel: 'Patients, patient directory',
+          tabBarIcon: tabIcon('people', 'people-outline'),
         }}
       />
       <Tabs.Screen
         name="billing"
         options={{
           title: 'Billing',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'receipt' : 'receipt-outline'} size={22} color={color} />
-          ),
+          tabBarAccessibilityLabel: 'Billing and invoices',
+          tabBarIcon: tabIcon('receipt', 'receipt-outline'),
         }}
       />
       <Tabs.Screen
         name="ai"
         options={{
           title: 'AI Assistant',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons
-              name={focused ? 'hardware-chip' : 'hardware-chip-outline'}
-              size={22}
-              color={color}
-            />
-          ),
+          tabBarAccessibilityLabel: 'MediOS AI Assistant',
+          tabBarIcon: tabIcon('hardware-chip', 'hardware-chip-outline'),
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
           title: 'More',
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? 'grid' : 'grid-outline'} size={22} color={color} />
-          ),
+          tabBarAccessibilityLabel: 'More features and settings',
+          tabBarIcon: tabIcon('grid', 'grid-outline'),
         }}
       />
     </Tabs>
@@ -84,8 +78,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: colors.borderLight,
-    height: 64,
-    paddingBottom: 8,
     paddingTop: 6,
     ...shadows.md,
   },
