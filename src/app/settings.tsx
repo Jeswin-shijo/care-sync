@@ -13,6 +13,7 @@ import { SettingsGroup, SettingsRow, ToggleRow } from '../components/shell/Setti
 import { languageLabel } from '../components/shell/settings/LanguageSection';
 import { APP_VERSION_LABEL } from '../components/shell/appInfo';
 import { useScrollBottomPadding } from '../components/shell/layout';
+import { AppLogo } from '../components/common/AppLogo';
 
 const open = (section: string) => () => router.push({ pathname: '/settings/[section]', params: { section } });
 
@@ -47,9 +48,7 @@ export default function SettingsRoute() {
             accessibilityRole="button"
             accessibilityLabel={`${hospitalProfile.name}, ${hospitalProfile.address}. Edit hospital profile`}
           >
-            <View style={styles.logo}>
-              <Ionicons name="add" size={26} color="#FFFFFF" />
-            </View>
+            <AppLogo size={48} />
             <View style={styles.profileText}>
               <Text style={styles.profileName} numberOfLines={2}>
                 {hospitalProfile.name}
@@ -194,14 +193,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderLight,
     ...shadows.sm,
-  },
-  logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   profileText: {
     flex: 1,

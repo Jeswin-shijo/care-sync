@@ -3,6 +3,10 @@ import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
 import { HOSPITAL_CONFIG } from '../constants/config';
 import { formatCurrency, numberToWords } from './formatters';
+import { buildLogoSvg } from '../constants/brandLogo';
+
+// Vector logo for document headers (WebView renders inline SVG crisply at print resolution).
+const LOGO_SVG = buildLogoSvg({ size: 46, cornerRadius: 230, shadow: false });
 
 /** A4 in PostScript points (expo-print defaults to US Letter). */
 const A4 = { width: 595, height: 842 };
@@ -60,7 +64,8 @@ const baseStyles = `
   body { font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0F172A; margin: 0; padding: 28px; }
   .sheet { max-width: 560px; margin: 0 auto; }
   .brand { text-align: center; border-bottom: 2px dashed #CBD5E1; padding-bottom: 14px; margin-bottom: 16px; }
-  .logo { display: inline-block; width: 38px; height: 38px; border-radius: 10px; background: #1E6BFF; color: #fff; font-size: 26px; line-height: 38px; font-weight: 700; }
+  .logo { display: inline-block; width: 46px; height: 46px; }
+  .logo svg { display: block; }
   .brand h1 { font-size: 19px; margin: 8px 0 2px; }
   .muted { color: #64748B; font-size: 11px; margin: 1px 0; }
   .title { text-align: center; margin: 6px 0 16px; }
@@ -92,7 +97,7 @@ const baseStyles = `
 
 const brandHtml = (h: HospitalHeader) => `
   <div class="brand">
-    <div class="logo">+</div>
+    <div class="logo">${LOGO_SVG}</div>
     <h1>${escapeHtml(h.name)}</h1>
     <p class="muted">${escapeHtml(h.address)} • ${escapeHtml(h.phone)}</p>
     <p class="muted">GSTIN: ${escapeHtml(h.gstin)}${h.regNo ? ` • Reg. No: ${escapeHtml(h.regNo)}` : ''}</p>

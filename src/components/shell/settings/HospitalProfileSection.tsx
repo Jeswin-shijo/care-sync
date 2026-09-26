@@ -17,6 +17,7 @@ import { useScrollBottomPadding } from '../layout';
 import { useHospitalEditAccess, ViewOnlyNotice } from './common';
 import { normalizeProfile as normalize, PROFILE_FIELDS as FIELDS, validateProfile as validate } from './profileValidation';
 import type { ProfileField as Field } from './profileValidation';
+import { AppLogo } from '../../common/AppLogo';
 
 export const HospitalProfileSection: React.FC = () => {
   const { hospitalProfile, updateHospitalProfile } = useApp();
@@ -120,9 +121,7 @@ export const HospitalProfileSection: React.FC = () => {
           <View style={styles.preview} accessible accessibilityLabel={`Receipt header preview: ${normalized.name}, ${normalized.address}, GSTIN ${normalized.gstin}`}>
             <Text style={styles.previewLabel}>RECEIPT HEADER PREVIEW</Text>
             <View style={styles.previewRow}>
-              <View style={styles.logo}>
-                <Ionicons name="add" size={24} color="#FFFFFF" />
-              </View>
+              <AppLogo size={46} />
               <View style={styles.previewText}>
                 <Text style={styles.previewName} numberOfLines={2}>
                   {normalized.name || 'Hospital name'}

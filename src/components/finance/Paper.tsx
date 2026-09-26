@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleProp, StyleSheet, Text, TextStyle, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
+import { AppLogo } from '../common/AppLogo';
 
 /**
  * Printed-document look (receipts, bills, claim forms): white sheet, hospital
@@ -31,9 +32,7 @@ export const Paper: React.FC<{ children: React.ReactNode; watermark?: string; st
 
 export const PaperHeader: React.FC<{ hospital: PaperHospital }> = ({ hospital }) => (
   <View style={styles.header}>
-    <View style={styles.logo} accessibilityElementsHidden importantForAccessibility="no">
-      <Ionicons name="add" size={26} color="#FFFFFF" />
-    </View>
+    <AppLogo size={44} />
     <View style={styles.headerText}>
       <Text style={styles.hospital}>{hospital.name}</Text>
       <Text style={styles.hospitalSub}>{hospital.address}</Text>
@@ -155,14 +154,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  logo: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   headerText: {
     flex: 1,

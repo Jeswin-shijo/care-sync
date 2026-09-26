@@ -9,6 +9,7 @@ import { colors, radius, spacing, typography } from '../constants/theme';
 import { HOSPITAL_CONFIG } from '../constants/config';
 import { FadeInView, PressableScale, useReducedMotion } from '../components/common/Motion';
 import { SplashIllustration } from '../components/shell/SplashIllustration';
+import { AppLogo } from '../components/common/AppLogo';
 
 export default function SplashScreen() {
   const { hospitalProfile } = useApp();
@@ -38,14 +39,14 @@ export default function SplashScreen() {
           <Animated.View
             style={[
               styles.logoBadge,
-              { width: logoSize, height: logoSize, borderRadius: logoSize * 0.3 },
+              { width: logoSize, height: logoSize, borderRadius: logoSize * 0.225 },
               {
                 opacity: logo,
                 transform: [{ scale: logo.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }],
               },
             ]}
           >
-            <Ionicons name="add" size={logoSize * 0.6} color="#FFFFFF" />
+            <AppLogo size={logoSize} />
           </Animated.View>
           <FadeInView delay={160}>
             <Text style={[styles.brandTitle, compact && styles.brandTitleCompact]} accessibilityRole="header">
@@ -112,7 +113,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoBadge: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.sm,
