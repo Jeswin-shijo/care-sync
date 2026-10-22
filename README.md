@@ -51,14 +51,6 @@ Rules of thumb:
 - **Role portals:** Doctor Copilot, Nurse (beds, tasks, vitals), Lab (sample pipeline, result entry, AI summary), Pharmacy review (safety checks, alternatives, overrides), Patient app (+ patient assistant, my reports, hospital navigation), Admin portal (overview, audit trail).
 - **Operations:** blood bank, ambulance fleet, bed management, inventory, document support, settings, notifications, help & support.
 
-## Legacy code
-
-`App.tsx`, `index.ts`, `src/navigation/` and `src/screens/` are an older React Navigation copy of the app. They are never bundled (the entry point is `expo-router/entry`) and are excluded from lint; delete them:
-
-```bash
-git rm -r App.tsx index.ts src/navigation src/screens
-```
-
 ## Connecting a backend
 
 Replace the initial state in `createInitialState()` (`src/logic/hospital.ts`) with API data, and turn the transitions into API calls (or run them optimistically and sync). The entity types in `src/data/mockData.ts` are the contract.

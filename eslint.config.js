@@ -9,11 +9,6 @@ module.exports = defineConfig([
       "dist/*",
       "android/*",
       "ios/*",
-      // Dead React Navigation layer — never bundled (entry is expo-router/entry). Delete it.
-      "App.tsx",
-      "index.ts",
-      "src/screens/*",
-      "src/navigation/*",
     ],
   },
   {
