@@ -141,13 +141,13 @@ export default function PatientsRoute() {
       />
       <KeyboardAwareContainer>
         <View style={styles.searchSection}>
-          <SearchBar value={query} onChangeText={setQuery} placeholder="Search name, UHID or phone…" />
+          <SearchBar value={query} onChangeText={setQuery} placeholder="Search patient..." />
         </View>
         <ChoiceChips
           scroll
           scrollInset={spacing.base}
           style={styles.filters}
-          options={FILTERS.map((f) => ({ value: f, label: f, count: counts[f] }))}
+          options={FILTERS.map((f) => ({ value: f, label: f }))}
           value={filter}
           onChange={setFilter}
         />

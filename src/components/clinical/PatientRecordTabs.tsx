@@ -107,6 +107,53 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const next = appointments.filter(isUpcomingAppointment).sort(byDateTimeAsc)[0];
   const cards: React.ReactNode[] = [];
 
+  // 1. Personal Information (matches design mockup)
+  cards.push(
+    <ClinicalCard key="personal" title="Personal Information" icon="person-circle-outline">
+      <InfoRow icon="calendar-outline" label="Date of Birth" value={formatDisplayDate(patient.dob)} />
+      <InfoRow icon="location-outline" label="Address" value={patient.address} />
+      <InfoRow icon="water-outline" iconColor={colors.danger} label="Blood Group" value={patient.bloodGroup} />
+      <InfoRow icon="shield-checkmark-outline" iconColor={colors.success} label="Insurance" value={patient.insurance} />
+      <InfoRow icon="call-outline" label="Mobile" value={patient.phone} onPress={onCall} />
+      {!!patient.email && <InfoRow icon="mail-outline" label="Email" value={patient.email} />}
+      <InfoRow
+        icon="people-outline"
+        iconColor={colors.orange}
+        label="Emergency Contact"
+        value={patient.emergencyContact ?? 'Not recorded'}
+        valueColor={patient.emergencyContact ? undefined : colors.textMuted}
+      />
+      <InfoRow icon="id-card-outline" iconColor={colors.teal} label="Registered on" value={formatDisplayDate(patient.registeredDate)} last />
+    </ClinicalCard>
+  );
+
+  // 2. Recent Visits (matches design mockup)
+  cards.push(
+    <ClinicalCard key="visits" title="Recent Visits" icon="document-text-outline" actionLabel={visits.length ? 'View All' : undefined} onAction={onViewVisits}>
+      {visits.length ? (
+        visits.slice(0, 3).map((v, i) => (
+          <PressableScale key={v.id} style={[styles.listRow, i === 0 && visits.length > 1 && styles.rowDivider]} onPress={onViewVisits}>
+            <View style={[styles.rowIcon, { backgroundColor: VISIT_COLOR[v.type] + '18' }]}>
+              <Ionicons name="document-text-outline" size={18} color={VISIT_COLOR[v.type]} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
+                {v.type} - {v.department}
+              </Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {formatDisplayDate(v.date)} • {v.doctorName}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </PressableScale>
+        ))
+      ) : (
+        <InlineEmpty icon="document-text-outline" text="No visits recorded yet." />
+      )}
+    </ClinicalCard>
+  );
+
+  // 3. Admission status if admitted
   if (admitted) {
     cards.push(
       <ClinicalCard
@@ -131,6 +178,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     );
   }
 
+  // 4. Vitals & Clinical Flags
   cards.push(
     <ClinicalCard key="vitals" title="Latest Vitals" icon="pulse" iconColor={colors.danger} actionLabel="Copilot" onAction={onOpenCopilot}>
       <VitalsStrip vitals={vitals} />
@@ -151,25 +199,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </ClinicalCard>
     );
   }
-
-  cards.push(
-    <ClinicalCard key="personal" title="Personal Information" icon="person-circle-outline">
-      <InfoRow icon="calendar-outline" label="Date of Birth" value={`${patient.dob} • ${patient.age} yrs`} />
-      <InfoRow icon="call-outline" label="Mobile" value={patient.phone} onPress={onCall} />
-      {!!patient.email && <InfoRow icon="mail-outline" label="Email" value={patient.email} />}
-      <InfoRow icon="location-outline" label="Address" value={patient.address} />
-      <InfoRow icon="water-outline" iconColor={colors.danger} label="Blood Group" value={patient.bloodGroup} />
-      <InfoRow icon="shield-checkmark-outline" iconColor={colors.success} label="Insurance" value={patient.insurance} />
-      <InfoRow
-        icon="people-outline"
-        iconColor={colors.orange}
-        label="Emergency Contact"
-        value={patient.emergencyContact ?? 'Not recorded'}
-        valueColor={patient.emergencyContact ? undefined : colors.textMuted}
-      />
-      <InfoRow icon="id-card-outline" iconColor={colors.teal} label="Registered on" value={formatDisplayDate(patient.registeredDate)} last />
-    </ClinicalCard>
-  );
 
   if (!admitted && patient.admittedOn) {
     cards.push(
@@ -209,31 +238,6 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       </ClinicalCard>
     );
   }
-
-  cards.push(
-    <ClinicalCard key="visits" title="Recent Visits" icon="document-text-outline" actionLabel={visits.length ? 'View All' : undefined} onAction={onViewVisits}>
-      {visits.length ? (
-        visits.slice(0, 2).map((v, i) => (
-          <PressableScale key={v.id} style={[styles.listRow, i === 0 && visits.length > 1 && styles.rowDivider]} onPress={onViewVisits}>
-            <View style={[styles.rowIcon, { backgroundColor: VISIT_COLOR[v.type] + '18' }]}>
-              <Ionicons name="document-text-outline" size={18} color={VISIT_COLOR[v.type]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle} numberOfLines={1}>
-                {v.type} - {v.department}
-              </Text>
-              <Text style={styles.rowSub} numberOfLines={1}>
-                {formatDisplayDate(v.date)} • {v.doctorName}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </PressableScale>
-        ))
-      ) : (
-        <InlineEmpty icon="document-text-outline" text="No visits recorded yet." />
-      )}
-    </ClinicalCard>
-  );
 
   return (
     <View style={styles.stack}>

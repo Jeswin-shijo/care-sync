@@ -12,14 +12,13 @@ import { HOSPITAL_CONFIG } from '../../constants/config';
 import { Header } from '../../components/common/Header';
 import { Avatar } from '../../components/common/Avatar';
 import { Badge, statusVariant } from '../../components/common/Badge';
-import { RoleSwitcher } from '../../components/common/RoleSwitcher';
 import { StatCard } from '../../components/common/StatCard';
 import { SectionHeader } from '../../components/common/SectionHeader';
 import { BottomSheet } from '../../components/common/BottomSheet';
 import { EmptyState } from '../../components/common/EmptyState';
 import { FadeInView, PressableScale, ProgressFill, PulseDot, stagger } from '../../components/common/Motion';
-import { AiAlertRow } from '../../components/shell/AiAlertRow';
 import { localizedGreeting } from '../../components/shell/settings/LanguageSection';
+import { AiAlertRow } from '../../components/shell/AiAlertRow';
 import { formatCurrency } from '../../utils/formatters';
 import { formatClock, greetingForNow, todayISO } from '../../utils/dates';
 import { goToTab, openRoute, TabName } from '../../utils/navigation';
@@ -256,13 +255,8 @@ export default function DashboardRoute() {
           </View>
         </FadeInView>
 
-        {/* Role portals — compact, below the KPIs */}
-        <FadeInView delay={stagger(2)}>
-          <RoleSwitcher style={styles.roleSwitcher} />
-        </FadeInView>
-
         {/* Quick actions */}
-        <FadeInView delay={stagger(3)}>
+        <FadeInView delay={stagger(2)}>
           <SectionHeader title="Quick Actions" />
           <View style={styles.quickGrid}>
             {QUICK_ACTIONS.map((a) => (
@@ -282,34 +276,6 @@ export default function DashboardRoute() {
                 </Text>
               </PressableScale>
             ))}
-          </View>
-        </FadeInView>
-
-        {/* MediOS AI alerts */}
-        <FadeInView delay={stagger(4)}>
-          <SectionHeader
-            title="MediOS AI Alerts"
-            meta={aiAlerts.length ? `${aiAlerts.length} active` : undefined}
-            actionLabel={aiAlerts.length ? 'View all' : undefined}
-            onActionPress={() => setAlertsOpen(true)}
-          />
-          <View style={styles.alertCard}>
-            <View style={styles.alertStrip}>
-              <PulseDot color={criticalCount ? colors.danger : colors.success} size={7} />
-              <Text style={styles.alertStripText}>
-                {criticalCount
-                  ? `${criticalCount} critical ${criticalCount === 1 ? 'alert needs' : 'alerts need'} review`
-                  : 'Monitoring labs, prescriptions, vitals & follow-ups'}
-              </Text>
-            </View>
-            {topAlerts.length ? (
-              topAlerts.map((a) => <AiAlertRow key={a.id} alert={a} divider onPress={() => openRoute(a.route, a.params)} />)
-            ) : (
-              <View style={styles.alertEmpty}>
-                <Ionicons name="shield-checkmark" size={20} color={colors.success} />
-                <Text style={styles.alertEmptyText}>No active alerts. MediOS AI will flag abnormal results, unsafe prescriptions and missed follow-ups here.</Text>
-              </View>
-            )}
           </View>
         </FadeInView>
 

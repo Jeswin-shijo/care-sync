@@ -77,14 +77,13 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 38,
-    paddingHorizontal: 14,
+    height: 36,
+    paddingHorizontal: 16,
     borderRadius: radius.full,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: colors.border,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: 'transparent',
     gap: 6,
-    ...shadows.sm,
   },
   chipActive: {
     backgroundColor: colors.primary,
@@ -93,7 +92,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.fontSizes.sm,
     fontWeight: typography.fontWeights.medium,
-    color: colors.textSecondary,
+    color: '#475569',
   },
   labelActive: {
     color: '#FFFFFF',

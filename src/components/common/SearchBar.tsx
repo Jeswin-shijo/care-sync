@@ -61,10 +61,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.xl,
+    borderColor: colors.borderLight,
+    borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   icon: {
     marginRight: spacing.sm,

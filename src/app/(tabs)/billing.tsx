@@ -82,10 +82,8 @@ export default function BillingRoute() {
       BILLING_FILTERS.map((f) => ({
         key: f.key,
         label: f.label,
-        count: searched.filter(f.match).length,
-        tone: f.key === 'Pending' ? ('warning' as const) : ('default' as const),
       })),
-    [searched]
+    []
   );
 
   const activeFilter = BILLING_FILTERS.find((f) => f.key === filter) ?? BILLING_FILTERS[0];
@@ -279,7 +277,7 @@ export default function BillingRoute() {
 
       <KeyboardAwareContainer>
         <View style={styles.searchSection}>
-          <SearchBar value={query} onChangeText={setQuery} placeholder="Search patient, invoice, UHID or amount…" />
+          <SearchBar value={query} onChangeText={setQuery} placeholder="Search patient, invoice or receipt..." />
         </View>
         <FilterChips items={chips} active={filter} onChange={(k) => setFilter(k as BillingFilterKey)} style={styles.chips} />
 

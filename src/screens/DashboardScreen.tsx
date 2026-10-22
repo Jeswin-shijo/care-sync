@@ -18,7 +18,6 @@ import { HOSPITAL_CONFIG } from '../constants/config';
 import { Header } from '../components/common/Header';
 import { Avatar } from '../components/common/Avatar';
 import { Badge } from '../components/common/Badge';
-import { RoleSwitcher } from '../components/common/RoleSwitcher';
 import { formatCurrency } from '../utils/formatters';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -31,46 +30,6 @@ export const DashboardScreen: React.FC = () => {
   const upcomingAppointments = appointments.slice(0, 3);
 
   const quickActions = [
-    {
-      id: 'doctor-copilot',
-      label: 'Doctor\nCopilot',
-      icon: 'sparkles' as const,
-      color: '#1E6BFF',
-      bg: '#EFF6FF',
-      onPress: () => navigation.navigate('DoctorCopilot'),
-    },
-    {
-      id: 'nurse-portal',
-      label: 'Nurse\nWard',
-      icon: 'fitness' as const,
-      color: '#059669',
-      bg: '#ECFDF5',
-      onPress: () => navigation.navigate('NursePortal'),
-    },
-    {
-      id: 'pharmacy-review',
-      label: 'Drug\nSafety',
-      icon: 'shield-checkmark' as const,
-      color: '#D97706',
-      bg: '#FFFBEB',
-      onPress: () => navigation.navigate('PharmacyReview'),
-    },
-    {
-      id: 'lab-portal',
-      label: 'Lab\nPortal',
-      icon: 'flask' as const,
-      color: '#7C3AED',
-      bg: '#F5F3FF',
-      onPress: () => navigation.navigate('LabPortal'),
-    },
-    {
-      id: 'patient-portal',
-      label: 'Patient\nApp',
-      icon: 'person' as const,
-      color: '#EC4899',
-      bg: '#FDF2F8',
-      onPress: () => navigation.navigate('PatientPortal'),
-    },
     {
       id: 'book',
       label: 'Book\nAppointment',
@@ -88,8 +47,48 @@ export const DashboardScreen: React.FC = () => {
       onPress: () => navigation.navigate('RegisterPatient'),
     },
     {
+      id: 'opd',
+      label: 'OPD\nConsultation',
+      icon: 'medical' as const,
+      color: '#059669',
+      bg: '#ECFDF5',
+      onPress: () => navigation.navigate('OpdConsultation'),
+    },
+    {
+      id: 'ipd',
+      label: 'IPD\nAdmission',
+      icon: 'bed' as const,
+      color: '#F59E0B',
+      bg: '#FFFBEB',
+      onPress: () => navigation.navigate('IpdAdmission'),
+    },
+    {
+      id: 'pharmacy',
+      label: 'Pharmacy',
+      icon: 'medkit' as const,
+      color: '#EF4444',
+      bg: '#FEF2F2',
+      onPress: () => navigation.navigate('Pharmacy'),
+    },
+    {
+      id: 'lab',
+      label: 'Lab /\nPathology',
+      icon: 'flask' as const,
+      color: '#7C3AED',
+      bg: '#F5F3FF',
+      onPress: () => navigation.navigate('LabPathology'),
+    },
+    {
+      id: 'radiology',
+      label: 'Radiology',
+      icon: 'scan' as const,
+      color: '#0284C7',
+      bg: '#EFF6FF',
+      onPress: () => navigation.navigate('Radiology'),
+    },
+    {
       id: 'more',
-      label: 'All\nPortals',
+      label: 'More\nFeatures',
       icon: 'grid' as const,
       color: '#64748B',
       bg: '#F1F5F9',
@@ -127,8 +126,6 @@ export const DashboardScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* MediOS AI Multi-Role Portal Switcher */}
-        <RoleSwitcher />
 
         {/* Hospital Glance Banner Card */}
         <TouchableOpacity
