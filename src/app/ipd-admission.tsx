@@ -25,6 +25,7 @@ import { FieldInput, FormField } from '../components/clinical/FormField';
 import { friendlyDate } from '../components/clinical/format';
 import type { IconName } from '../components/clinical/types';
 import { useReturnToPatient } from '../components/clinical/useReturnToPatient';
+import { withPreview } from '../components/common/PreviewScope';
 
 type AdmissionType = 'New Admission' | 'Re-admission';
 
@@ -43,7 +44,7 @@ const defaultAdmissionType = (p?: Patient): AdmissionType => (p && p.admittedOn 
 
 const roomTypeForWard = (w: WardInfo): RoomType => (w.type === 'ICU' ? 'ICU' : w.type === 'Deluxe' ? 'Private' : 'General Ward');
 
-export default function IpdAdmissionRoute() {
+function IpdAdmissionRoute() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <IpdAdmissionScreen />
@@ -520,3 +521,6 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(IpdAdmissionRoute, { module: 'ipd-admission', title: 'IPD Admission', purpose: 'Admitting patients to IPD' });

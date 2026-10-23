@@ -1,7 +1,7 @@
 import type { DischargeSummary, Doctor, Invoice, InvoiceItem, LabTest, Medicine, Patient, RadiologyScan, WardInfo } from '../../data/mockData';
 import { INVOICE_PREFIX, itemsTotal, receiptHeading } from '../../logic/billing';
 import { isExpired } from '../../logic/hospital';
-import { clockToMinutes, formatClock, formatDisplayDate, relativeDayLabel, todayISO } from '../../utils/dates';
+import { clockToMinutes, formatClock, formatDisplayDate, relativeDayLabel, todayISO, clinicNow } from '../../utils/dates';
 import { NURSING_ITEM, REGISTRATION_ITEM } from './catalog';
 import { invoiceDisplayTime } from './invoiceUtils';
 import type { FinanceTemplate } from './templates';
@@ -114,7 +114,7 @@ const synthesize = (t: FinanceTemplate, s: TemplateSources): { invoice: Invoice;
       }
   }
   if (!items.length) return null;
-  const now = new Date();
+  const now = clinicNow();
   const withDoctor = type === 'OPD' || type === 'IPD' || type === 'Surgery';
   return {
     invoice: {

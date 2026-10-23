@@ -12,7 +12,7 @@ import type {
 } from '../../data/mockData';
 import type { AiCitation } from '../../logic/hospital';
 import { formatParamValue, parameterFlag, vitalsFlags, type LabTrend } from '../../logic/clinical';
-import { clockToMinutes, daysFromToday, formatDayMonth, relativeDayLabel, todayISO } from '../../utils/dates';
+import { clockToMinutes, daysFromToday, formatDayMonth, relativeDayLabel, todayISO, clinicNow } from '../../utils/dates';
 
 /**
  * Doctor Copilot "reasoning" (simulated, deterministic). Everything here is a
@@ -83,7 +83,7 @@ export const compactValue = (v: number) => {
 const trendValue = (unit: string, value: number) => formatParamValue({ name: '', value, unit });
 
 /** "2h ago" / "yesterday, 09:20 AM" / "28 Jun, 10:10 AM" for a charted record. */
-export const recordedAgo = (date: string, time: string, now: Date = new Date()): string => {
+export const recordedAgo = (date: string, time: string, now: Date = clinicNow()): string => {
   const d = daysFromToday(date);
   if (d === 0) {
     const mins = now.getHours() * 60 + now.getMinutes() - clockToMinutes(time);

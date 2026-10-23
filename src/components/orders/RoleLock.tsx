@@ -29,9 +29,27 @@ interface RoleLockScreenProps {
 
 /** Full-screen mock-RBAC lock with a one-tap role switch (recorded in the audit log by the store). */
 export const RoleLockScreen: React.FC<RoleLockScreenProps> = ({ title, module, purpose }) => {
-  const { activeRole, setActiveRole } = useApp();
+  const { activeRole, setActiveRole, canSwitchRole } = useApp();
   const target = WORKING_ROLE[module] ?? 'admin';
   const leave = () => (router.canGoBack() ? router.back() : router.replace('/(tabs)'));
+  if (!canSwitchRole) {
+    // A signed-in account's role is fixed; say who to ask instead of offering a switch.
+    return (
+      <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
+        <Header title={title} />
+        <FadeInView style={styles.wrap}>
+          <View style={styles.lock}>
+            <Ionicons name="lock-closed" size={30} color={colors.warning} />
+          </View>
+          <Text style={styles.title}>Not available for your account</Text>
+          <Text style={styles.body}>
+            {purpose} isn’t part of the {ROLE_LABEL[activeRole]} role. Ask a hospital administrator if your job needs it.
+          </Text>
+          <Button title="Go Back" variant="ghost" onPress={leave} style={styles.secondary} />
+        </FadeInView>
+      </SafeAreaView>
+    );
+  }
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <Header title={title} />

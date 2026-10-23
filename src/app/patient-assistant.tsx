@@ -15,6 +15,7 @@ import { ChatConversation } from '../components/ai/ChatConversation';
 import { RobotAvatar } from '../components/ai/RobotAvatar';
 import { Suggestion, SuggestionList } from '../components/ai/SuggestionList';
 import { FollowUpChips } from '../components/ai/FollowUpChips';
+import { withPreview } from '../components/common/PreviewScope';
 
 /** The four Patient App shortcuts from the design; each asks the assistant, which answers with an action card. */
 const QUICK_ACTIONS: Suggestion[] = [
@@ -44,7 +45,7 @@ const VOICE = { transcripts: VOICE_TRANSCRIPTS, subtitle: 'Ask your question out
 
 const DISCLAIMER = 'Guidance only, not a diagnosis • In an emergency tap SOS or call 108';
 
-export default function PatientAssistantRoute() {
+function PatientAssistantRoute() {
   const { patientAppUser, patientChatMessages, patientAiTyping, sendPatientAiMessage, clearPatientChat, setActiveRole } = useApp();
   const insets = useSafeAreaInsets();
 
@@ -258,3 +259,6 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(PatientAssistantRoute, { module: 'patient-portal', title: 'Patient Assistant', purpose: 'The patient app' });

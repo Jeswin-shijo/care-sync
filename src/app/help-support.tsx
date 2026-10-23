@@ -73,7 +73,7 @@ const SEED_TICKETS: Ticket[] = [
 ];
 
 export default function HelpSupportRoute() {
-  const { hospitalProfile, activeRole } = useApp();
+  const { hospitalProfile, activeRole, actorName } = useApp();
   const { showToast } = useToast();
   const now = useNow(30000);
   const bottomPad = useScrollBottomPadding();
@@ -166,7 +166,7 @@ export default function HelpSupportRoute() {
         category,
         status: 'Open',
         createdAt: Date.now(),
-        raisedBy: ROLE_ACTOR[activeRole],
+        raisedBy: actorName,
       };
       setTickets((list) => [ticket, ...list]);
       setSubject('');

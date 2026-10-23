@@ -31,6 +31,7 @@ import { plural, shortDoctorName, useMountedRef, usePaymentModes } from '../comp
 import { RoleLockScreen } from '../components/orders/RoleLock';
 import { canAccess } from '../logic/access';
 import { formatCurrency } from '../utils/formatters';
+import { withPreview } from '../components/common/PreviewScope';
 
 type LabTab = 'All' | LabTest['category'];
 const TABS: LabTab[] = ['All', 'Biochemistry', 'Hematology', 'Microbiology', 'Pathology'];
@@ -44,7 +45,7 @@ const CATEGORY_STYLE: Record<LabTest['category'], { icon: keyof typeof Ionicons.
 
 const shortName = (name: string) => name.split('(')[0].trim();
 
-export default function LabRoute() {
+function LabRoute() {
   const params = useLocalSearchParams<{ patientId?: string }>();
   const { activeRole, labTests, doctors, getPatient, getLabOrders, orderLabTests } = useApp();
   const keyboardOpen = useKeyboardHeight() > 0;
@@ -477,3 +478,6 @@ const styles = StyleSheet.create({
   footerRow: { flexDirection: 'row', gap: spacing.sm },
   footerHalf: { flex: 1 },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(LabRoute, { module: 'lab', title: 'Lab / Pathology', purpose: 'Ordering laboratory tests' });

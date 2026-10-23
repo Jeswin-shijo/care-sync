@@ -77,6 +77,7 @@ const fmt = src('utils/formatters.ts');
 const pdf = src('utils/pdfGenerator.ts');
 const theme = src('constants/theme.ts');
 const { HOSPITAL_CONFIG } = src('constants/config.ts');
+const M = src('api/mappers.ts');
 const reportsPath = path.join(ROOT, 'src/logic/reports.ts');
 const reports = fs.existsSync(reportsPath) ? require(reportsPath) : null;
 
@@ -224,10 +225,11 @@ function run() {
   agent.test('Audit 2: Every route file exports a default component and the route contract is complete', () => {
     const routes = walk('src/app').filter((f) => f.endsWith('.tsx'));
     routes.forEach((f) => {
-      if (!/export\s+default\s+function|export\s+default\s+[A-Z]/.test(read(f))) throw new Error(`${rel(f)} has no default export`);
+      // `export default withPreview(Screen, …)` wraps a screen for live accounts.
+      if (!/export\s+default\s+function|export\s+default\s+[A-Z]|export\s+default\s+with[A-Z]\w*\(/.test(read(f))) throw new Error(`${rel(f)} has no default export`);
     });
     const required = [
-      '_layout', 'index', '(tabs)/_layout', '(tabs)/index', '(tabs)/patients', '(tabs)/billing', '(tabs)/ai', '(tabs)/more',
+      '_layout', 'index', 'login', '(tabs)/_layout', '(tabs)/index', '(tabs)/patients', '(tabs)/billing', '(tabs)/ai', '(tabs)/more',
       'patient/[id]', 'register-patient', 'opd-consultation', 'ipd-admission', 'discharge-summary', 'appointments',
       'book-appointment', 'pharmacy', 'lab', 'radiology', 'receipt/[id]', 'receipt-templates', 'financial-management',
       'reports', 'notifications', 'settings', 'doctor-copilot', 'nurse-portal', 'lab-portal', 'pharmacy-review', 'patient-portal',
@@ -724,6 +726,101 @@ function run() {
       r.rows.forEach((row) => agent.expect(row.length).toBe(r.columns.length));
     });
     agent.expect(reports.buildReport('does-not-exist', s0)).toBe(null);
+  });
+
+  // -----------------------------------------------------------
+  // 6b. BACKEND MAPPING (live mode)
+  // -----------------------------------------------------------
+  agent.suite('Backend Mapping (live mode, real code)');
+
+  agent.test('Map 1: Backend display dates and times convert to the app formats', () => {
+    agent.expect(M.isoFromDisplay('26 Sep 2026')).toBe('2026-09-26');
+    agent.expect(M.isoFromDisplay('5 Jan 2027, 09:05 AM')).toBe('2027-01-05');
+    agent.expect(M.isoFromDisplay('not a date')).toBe('');
+    agent.expect(M.timeFromDisplay('26 Sep 2026, 09:05 am')).toBe('09:05 AM');
+    agent.expect(M.timeFromDisplay('26 Sep 2026')).toBe('');
+  });
+
+  agent.test('Map 2: Patients map status, insurance and allergy tags without inventing data', () => {
+    const api = {
+      id: 'p1', uhid: 'MHK1', name: 'Arun Kumar', age: 34, gender: 'Male', phone: '+91 98765 43210', status: 'Today',
+      allergies: ['Allergy: Penicillin'], conditions: ['Hypertension'], insurance: { provider: 'Star Health', policyNumber: 'SH1' },
+    };
+    const p = M.toPatient(api);
+    agent.expect(p.status).toBe('Active');
+    agent.expect(p.insurance).toBe('Star Health (SH1)');
+    agent.expect(p.dob).toBe('');
+    agent.expect(M.toPatient({ ...api, status: 'Admitted', insurance: undefined }).insurance).toBe('Self Pay');
+    agent.expect(M.toPatient({ ...api, status: 'Admitted' }).status).toBe('Admitted');
+    const profile = M.toProfile(api, [{ id: 'm1', uhid: 'MHK1', medicine: 'Tab Amlodipine 5 mg', status: 'Active' }, { id: 'm2', uhid: 'MHK1', medicine: 'Old', status: 'Stopped' }, { id: 'm3', uhid: 'X', medicine: 'Other patient', status: 'Active' }]);
+    agent.expect(profile.allergies).toEqual(['Penicillin']);
+    agent.expect(profile.currentMedications).toEqual(['Tab Amlodipine 5 mg']);
+  });
+
+  agent.test('Map 3: Appointments get app statuses, patient ids and per-day tokens in clock order', () => {
+    const doctor = M.toDoctor({ profile: { name: 'Dr. Shajin' }, callAgent: { clinicSessions: '09:00-10:00', slotMinutes: 30 } });
+    agent.expect(doctor.slots).toEqual(['09:00 AM', '09:30 AM']);
+    const list = M.toAppointments(
+      [
+        { id: 'a2', uhid: 'U1', patientName: 'A', age: 1, gender: 'Male', time: '02:00 PM', date: '2026-09-26', type: 'Follow-up', status: 'Scheduled' },
+        { id: 'a1', uhid: 'U2', patientName: 'B', age: 1, gender: 'Male', time: '09:30 AM', date: '2026-09-26', type: 'Consultation', status: 'No Show' },
+        { id: 'a3', uhid: 'U1', patientName: 'A', age: 1, gender: 'Male', time: '10:00 AM', date: '2026-09-27', type: 'Consultation', status: 'Checked In' },
+      ],
+      new Map([['U1', 'p1'], ['U2', 'p2']]),
+      doctor
+    );
+    const by = Object.fromEntries(list.map((a) => [a.id, a]));
+    agent.expect([by.a1.tokenNo, by.a2.tokenNo, by.a3.tokenNo]).toEqual([1, 2, 1]);
+    agent.expect([by.a1.status, by.a2.status, by.a3.status]).toEqual(['Not Arrived', 'Confirmed', 'Waiting']);
+    agent.expect(by.a2.type).toBe('Follow Up');
+    agent.expect(by.a2.patientId).toBe('p1');
+    ['Confirmed', 'Waiting', 'In Consultation', 'Completed', 'Cancelled', 'Not Arrived'].forEach((s) => {
+      const back = M.apiAppointmentStatus(s);
+      const again = M.toAppointments([{ id: 'x', uhid: 'U1', patientName: 'A', age: 1, gender: 'Male', time: '09:00 AM', date: '2026-09-26', type: 'OPD', status: back }], new Map(), doctor)[0].status;
+      agent.expect(again).toBe(s);
+    });
+  });
+
+  agent.test('Map 4: Invoices read paid/pending from the balance and normalise payment modes', () => {
+    const bill = {
+      id: 'b1', billNumber: 'BILL-1', uhid: 'U1', patientName: 'A', billDate: '23 Sep 2026, 09:15 AM', visitType: 'OPD', paymentMode: 'Card (Online)',
+      status: 'Paid', items: [{ service: 'Consultation Fee', category: 'Consultation', qty: 1, unitPrice: 500, amount: 500 }], totalAmount: 500, paidAmount: 500, balanceDue: 0,
+    };
+    const inv = M.toInvoice(bill, 'p1');
+    agent.expect([inv.status, inv.paymentMode, inv.dateISO, inv.time, inv.type]).toEqual(['Paid', 'Card', '2026-09-23', '09:15 AM', 'OPD']);
+    const due = M.toInvoice({ ...bill, paidAmount: 200, balanceDue: 300, paymentMode: 'Wallet' }, 'p1');
+    agent.expect([due.status, due.paymentMode, due.balanceDue]).toEqual(['Pending', 'Cash', 300]);
+  });
+
+  agent.test('Map 5: Lab reports keep numeric parameters with parsed ranges and flag abnormal results', () => {
+    agent.expect(M.parseRange('13.0 – 17.0')).toEqual({ low: 13, high: 17 });
+    agent.expect(M.parseRange('< 200')).toEqual({ high: 200 });
+    agent.expect(M.parseRange('> 60')).toEqual({ low: 60 });
+    agent.expect(M.parseRange('Negative')).toEqual({});
+    const sample = M.toLabSample(
+      { id: 'abcdef123456', uhid: 'U1', testName: 'CBC', category: 'hematology', date: '12 Sep 2026', time: '09:30 AM', status: 'Completed',
+        groups: [{ category: 'RBC', parameters: [{ name: 'Hb', result: 10.4, referenceRange: '13.0 – 17.0', unit: 'g/dL', status: 'Low' }, { name: 'Note', result: 'see smear', status: 'Normal' }] }] },
+      { id: 'p1', name: 'A' }
+    );
+    agent.expect([sample.status, sample.category, sample.date, sample.patientId]).toEqual(['Abnormal', 'Hematology', '2026-09-12', 'p1']);
+    agent.expect(sample.parameters).toEqual([{ name: 'Hb', value: 10.4, unit: 'g/dL', low: 13, high: 17 }]);
+  });
+
+  agent.test('Map 6: Account roles map to app roles (front desk gets the reception role)', () => {
+    agent.expect(['doctor', 'admin', 'nurse', 'pharmacist', 'lab', 'staff'].map(M.roleFor)).toEqual(['doctor', 'admin', 'nurse', 'pharmacy', 'lab', 'reception']);
+    agent.expect(access.canAccess('reception', 'register-patient')).toBe(true);
+    agent.expect(access.canAccess('reception', 'opd-consultation')).toBe(false);
+  });
+
+  agent.test('Map 7: withServerIds makes a transition use the ids and numbers the server assigned', () => {
+    const s = H.createInitialState();
+    const input = { name: 'Server Patient', phone: '9876500000', dob: '01/01/1990', gender: 'Male', address: 'X', bloodGroup: 'O+', insurance: '' };
+    const { state, result } = H.withServerIds({ ids: { pat: ['srv-pat'], inv: ['srv-inv'] }, uhids: ['MHK999'], invoiceNos: ['INV-123'] }, () => H.registerPatient(s, input));
+    agent.expect([result.patient.id, result.patient.uhid, result.invoice.id, result.invoice.invoiceNo]).toEqual(['srv-pat', 'MHK999', 'srv-inv', 'INV-123']);
+    agent.expect(state.selectedPatientId).toBe('srv-pat');
+    // Outside the wrapper ids are generated locally again.
+    const local = H.registerPatient(s, { ...input, name: 'Local Patient', phone: '9876500001' }).result;
+    agent.expect(local.patient.id.startsWith('pat-')).toBe(true);
   });
 
   // -----------------------------------------------------------

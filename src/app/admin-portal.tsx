@@ -21,6 +21,7 @@ import { useNow } from '../components/shell/time';
 import { formatCompactCurrency, formatCurrency } from '../utils/formatters';
 import { formatClock } from '../utils/dates';
 import { goToTab } from '../utils/navigation';
+import { withPreview } from '../components/common/PreviewScope';
 
 const PERIODS: Array<{ key: RevenuePeriod; label: string }> = [
   { key: 'today', label: 'Today' },
@@ -44,7 +45,7 @@ const MIX = [
   { key: 'diagnostics', label: 'Diagnostics', color: '#10B981' },
 ] as const;
 
-export default function AdminPortalRoute() {
+function AdminPortalRoute() {
   const {
     setActiveRole,
     todayStats,
@@ -579,3 +580,6 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(AdminPortalRoute, { module: 'admin-portal', title: 'Admin Portal', purpose: 'The admin portal' });

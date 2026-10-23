@@ -33,6 +33,7 @@ import {
 } from '../components/operations/beds';
 import { ButtonRow, cardStyle, InfoRow, KpiRow, LegendItem, Notice, Segmented } from '../components/operations/OpsUI';
 import { afterModal, callNumber, plural } from '../components/operations/utils';
+import { withPreview } from '../components/common/PreviewScope';
 
 type BedFilter = 'all' | 'occupied' | 'available';
 
@@ -45,7 +46,7 @@ const stayLabel = (p: Patient) => {
   return days === 0 ? 'Admitted today' : `Stay ${plural(days, 'day')}`;
 };
 
-export default function BedManagementRoute() {
+function BedManagementRoute() {
   const params = useLocalSearchParams<{ ward?: string }>();
   const { wardInfo, patients, bedSummary, dischargeSummaries, nurseTasks, hospitalProfile, getWardBedMap } = useApp();
   const { width } = useWindowDimensions();
@@ -504,3 +505,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(BedManagementRoute, { module: 'bed-management', title: 'Bed Management', purpose: 'Bed management' });

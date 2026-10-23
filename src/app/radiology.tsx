@@ -34,7 +34,8 @@ import { plural, shortDoctorName, useMinuteTick, useMountedRef, usePaymentModes 
 import { RoleLockScreen } from '../components/orders/RoleLock';
 import { canAccess } from '../logic/access';
 import { formatCurrency } from '../utils/formatters';
-import { clockToMinutes, formatClock, formatDayMonth, formatDisplayDate, isoDaysFromToday, relativeDayLabel, todayISO, weekdayShort } from '../utils/dates';
+import { clockToMinutes, formatClock, formatDayMonth, formatDisplayDate, isoDaysFromToday, relativeDayLabel, todayISO, weekdayShort, clinicNow } from '../utils/dates';
+import { withPreview } from '../components/common/PreviewScope';
 
 type RadTab = 'All' | RadiologyScan['category'];
 const TABS: RadTab[] = ['All', 'X-Ray', 'CT Scan', 'MRI', 'Ultrasound', 'Mammography'];
@@ -57,7 +58,7 @@ const scanIcon = (scan: Pick<RadiologyScan, 'name' | 'category'>): McIcon => {
 const RADIOLOGY_SLOTS: string[] = (() => {
   const out: string[] = [];
   for (let m = 8 * 60; m <= 19 * 60 + 30; m += 30) {
-    const d = new Date();
+    const d = clinicNow();
     d.setHours(Math.floor(m / 60), m % 60, 0, 0);
     out.push(formatClock(d));
   }
@@ -72,7 +73,7 @@ const latestParam = (samples: LabSample[], name: string) => {
   return undefined;
 };
 
-export default function RadiologyRoute() {
+function RadiologyRoute() {
   const params = useLocalSearchParams<{ patientId?: string }>();
   const { activeRole, radiologyScans, radiologyOrders, doctors, getPatient, getProfile, getLabResults, getRadiologyOrders, orderRadiologyScans } = useApp();
   const keyboardOpen = useKeyboardHeight() > 0;
@@ -693,3 +694,6 @@ const styles = StyleSheet.create({
   },
   schedTime: { width: 62, fontSize: typography.fontSizes.xs + 1, fontWeight: typography.fontWeights.bold, color: colors.text },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(RadiologyRoute, { module: 'radiology', title: 'Radiology', purpose: 'Scheduling radiology scans' });

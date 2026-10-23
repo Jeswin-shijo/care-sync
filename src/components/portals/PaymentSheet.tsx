@@ -48,12 +48,12 @@ export const PaymentSheet: React.FC<PaymentSheetProps> = ({ visible, invoice, on
     if (!invoice || processing) return;
     setProcessing(true);
     // Simulated gateway round-trip.
-    timer.current = setTimeout(() => {
-      const paid = markInvoicePaid(invoice.id, mode);
+    timer.current = setTimeout(async () => {
+      const paid = await markInvoicePaid(invoice.id, mode);
       setProcessing(false);
       onClose();
       if (!paid) {
-        showToast({ type: 'danger', title: 'Payment failed', message: 'This bill could not be found. Please refresh and try again.' });
+        showToast({ type: 'danger', title: 'Payment failed', message: 'This bill could not be updated. Please refresh and try again.' });
         return;
       }
       showToast({

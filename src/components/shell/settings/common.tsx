@@ -23,14 +23,15 @@ export const SectionScroll: React.FC<ScrollViewProps & { children: React.ReactNo
 
 /** Hospital-wide settings are editable by administrators only (RBAC). */
 export const useHospitalEditAccess = () => {
-  const { activeRole, setActiveRole } = useApp();
+  const { activeRole, setActiveRole, canSwitchRole } = useApp();
   const { showToast } = useToast();
   const canEdit = canAccess(activeRole, 'settings');
   const switchToAdmin = () => {
     setActiveRole('admin');
     showToast({ type: 'info', title: 'Switched to Administrator', message: 'You can now edit hospital settings. The switch is in the audit trail.' });
   };
-  return { canEdit, roleLabel: ROLE_LABEL[activeRole], switchToAdmin };
+  // A signed-in account's role is fixed: no switch, only the explanation.
+  return { canEdit, roleLabel: ROLE_LABEL[activeRole], switchToAdmin: canSwitchRole ? switchToAdmin : undefined };
 };
 
 export const ViewOnlyNotice: React.FC<{ style?: StyleProp<ViewStyle> }> = ({ style }) => {
@@ -42,7 +43,7 @@ export const ViewOnlyNotice: React.FC<{ style?: StyleProp<ViewStyle> }> = ({ sty
       icon="lock-closed"
       title={`View only for ${roleLabel}`}
       message="Hospital-wide settings can only be changed by an Administrator."
-      actionLabel="Switch to Administrator"
+      actionLabel={switchToAdmin ? 'Switch to Administrator' : undefined}
       onAction={switchToAdmin}
       style={[styles.notice, style]}
     />

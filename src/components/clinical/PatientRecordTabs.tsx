@@ -110,8 +110,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   // 1. Personal Information (matches design mockup)
   cards.push(
     <ClinicalCard key="personal" title="Personal Information" icon="person-circle-outline">
-      <InfoRow icon="calendar-outline" label="Date of Birth" value={formatDisplayDate(patient.dob)} />
-      <InfoRow icon="location-outline" label="Address" value={patient.address} />
+      <InfoRow icon="calendar-outline" label="Date of Birth" value={patient.dob ? formatDisplayDate(patient.dob) : 'Not recorded'} valueColor={patient.dob ? undefined : colors.textMuted} />
+      <InfoRow icon="location-outline" label="Address" value={patient.address || 'Not recorded'} valueColor={patient.address ? undefined : colors.textMuted} />
       <InfoRow icon="water-outline" iconColor={colors.danger} label="Blood Group" value={patient.bloodGroup} />
       <InfoRow icon="shield-checkmark-outline" iconColor={colors.success} label="Insurance" value={patient.insurance} />
       <InfoRow icon="call-outline" label="Mobile" value={patient.phone} onPress={onCall} />

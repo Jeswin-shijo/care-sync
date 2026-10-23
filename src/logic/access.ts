@@ -39,6 +39,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   lab: 'Lab Technician',
   pharmacy: 'Pharmacist',
   admin: 'Administrator',
+  reception: 'Front Desk',
   patient: 'Patient',
 };
 
@@ -48,6 +49,7 @@ export const PORTAL_FOR_ROLE: Record<UserRole, string> = {
   lab: '/lab-portal',
   pharmacy: '/pharmacy-review',
   admin: '/admin-portal',
+  reception: '/appointments',
   patient: '/patient-portal',
 };
 
@@ -74,6 +76,7 @@ const ROLE_ACCESS: Record<UserRole, ModuleId[] | 'all'> = {
   nurse: [...COMMON, 'nurse-portal', 'bed-management', 'ipd-admission', 'discharge-summary', 'appointments', 'blood-bank', 'inventory', 'documents', 'ambulance'],
   lab: [...COMMON, 'lab-portal', 'lab', 'radiology', 'blood-bank', 'inventory', 'documents'],
   pharmacy: [...COMMON, 'pharmacy-review', 'pharmacy', 'inventory', 'billing'],
+  reception: [...COMMON, 'register-patient', 'appointments', 'billing', 'documents'],
   patient: ['patient-portal', 'help-support'],
 };
 

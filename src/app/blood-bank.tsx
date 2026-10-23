@@ -34,6 +34,7 @@ import { BloodGroupSheet } from '../components/operations/BloodGroupSheet';
 import { RejectRequestSheet } from '../components/operations/RejectRequestSheet';
 import { ButtonRow, ChoiceChips, KpiRow, LegendItem, Notice } from '../components/operations/OpsUI';
 import { afterModal, plural } from '../components/operations/utils';
+import { withPreview } from '../components/common/PreviewScope';
 
 type RequestFilter = 'Pending' | 'Issued' | 'Rejected' | 'All';
 
@@ -50,7 +51,7 @@ interface SheetState {
 
 const CLOSED: SheetState = { open: false, group: null };
 
-export default function BloodBankRoute() {
+function BloodBankRoute() {
   const { bloodStock, bloodRequests, getPatient, issueBlood } = useApp();
   const { showToast } = useToast();
   const barSpace = useBottomBarSpace();
@@ -425,3 +426,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(BloodBankRoute, { module: 'blood-bank', title: 'Blood Bank', purpose: 'The blood bank' });

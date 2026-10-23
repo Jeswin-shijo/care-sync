@@ -33,12 +33,13 @@ import { VitalsStrip } from '../components/clinical/VitalsStrip';
 import { TimelineEntry, VisitTimeline } from '../components/clinical/VisitTimeline';
 import { buildDischargeSummaryDoc } from '../components/clinical/documents';
 import { friendlyDate, plural } from '../components/clinical/format';
+import { withPreview } from '../components/common/PreviewScope';
 
 const TABS = ['Summary', 'Treatment', 'Prescription', 'Bill'] as const;
 type Tab = (typeof TABS)[number];
 const STAY_BILL_TYPES = new Set(['IPD', 'Surgery', 'Lab', 'Radiology', 'Pharmacy']);
 
-export default function DischargeSummaryRoute() {
+function DischargeSummaryRoute() {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <DischargeSummaryScreen />
@@ -745,3 +746,6 @@ const styles = StyleSheet.create({
   indent: { marginLeft: 34 },
   sheetHint: { fontSize: typography.fontSizes.xs + 1, color: colors.textMuted, marginTop: spacing.sm },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(DischargeSummaryRoute, { module: 'discharge-summary', title: 'Discharge Summary', purpose: 'Discharge summaries' });

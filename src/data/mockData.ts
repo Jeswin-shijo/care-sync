@@ -80,6 +80,8 @@ export interface Appointment {
   status: 'Confirmed' | 'Waiting' | 'Not Arrived' | 'Completed' | 'In Consultation' | 'Cancelled';
   tokenNo: number;
   reason?: string;
+  /** Live mode: whether the patient confirmed (AI call or front desk), from the backend. */
+  confirmation?: string;
 }
 
 export interface InvoiceItem {
@@ -109,6 +111,10 @@ export interface Invoice {
   dateISO?: string;
   paidAt?: string;
   insuranceCovered?: number;
+  /** Live mode: amount still owed (an invoice can be part-paid on the backend). */
+  balanceDue?: number;
+  /** Live mode: created by a preview module on sample data; never saved to the backend. */
+  sample?: boolean;
 }
 
 export interface Medicine {
@@ -2545,7 +2551,7 @@ export interface PatientDocument {
   patientId: string;
   patientName: string;
   title: string;
-  type: 'Consent' | 'ID Proof' | 'Insurance' | 'Lab Report' | 'Discharge' | 'Imaging';
+  type: 'Consent' | 'ID Proof' | 'Insurance' | 'Lab Report' | 'Discharge' | 'Imaging' | 'Referral' | 'Certificate' | 'Prescription';
   /** ISO date */
   date: string;
   size: string;

@@ -12,6 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography } from '../../constants/theme';
+import { useIsPreview } from './previewContext';
+import { useAlert } from '../../context/AlertContext';
 
 export interface HeaderProps {
   title?: string;
@@ -35,6 +37,8 @@ export const Header: React.FC<HeaderProps> = ({
   safeAreaTop = false,
 }) => {
   const insets = useSafeAreaInsets();
+  const preview = useIsPreview();
+  const { showAlert } = useAlert();
 
   const handleBack = () => {
     if (onBackPress) {
@@ -51,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
     ? Math.max(insets.top, Platform.OS === 'android' ? (RNStatusBar.currentHeight || 24) : 0)
     : 0;
 
-  return (
+  const header = (
     <View
       style={[
         styles.container,
@@ -92,6 +96,31 @@ export const Header: React.FC<HeaderProps> = ({
 
       {rightAction && <View style={styles.rightContainer}>{rightAction}</View>}
     </View>
+  );
+
+  if (!preview) return header;
+  return (
+    <>
+      {header}
+      <TouchableOpacity
+        style={styles.preview}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Preview: sample data, nothing is saved. Tap for details."
+        onPress={() =>
+          showAlert({
+            title: 'Preview module',
+            message:
+              'This module is not connected to the hospital server yet. It runs on a sample hospital so you can try it: nothing here comes from or is saved to your hospital records.',
+            type: 'info',
+          })
+        }
+      >
+        <Ionicons name="flask-outline" size={14} color={colors.warningText} />
+        <Text style={styles.previewText}>Preview • sample data, nothing is saved</Text>
+        <Ionicons name="information-circle-outline" size={15} color={colors.warningText} />
+      </TouchableOpacity>
+    </>
   );
 };
 
@@ -142,6 +171,22 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
     fontWeight: typography.fontWeights.medium,
+  },
+  preview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: spacing.base,
+    backgroundColor: colors.warningLight,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.warning + '40',
+  },
+  previewText: {
+    fontSize: typography.fontSizes.xs + 1,
+    fontWeight: typography.fontWeights.semiBold,
+    color: colors.warningText,
   },
   rightContainer: {
     flexDirection: 'row',

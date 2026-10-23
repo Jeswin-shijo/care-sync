@@ -17,6 +17,7 @@ import { openBillingTab, pushOrPopTo } from '../components/finance/financeNaviga
 import { PAYMENT_MODE_META, PAYMENT_MODE_ORDER, type IconName } from '../components/finance/invoiceUtils';
 import { formatCompactCurrency, formatCurrency } from '../utils/formatters';
 import { relativeDayLabel, todayISO } from '../utils/dates';
+import { withPreview } from '../components/common/PreviewScope';
 
 const PERIODS: Array<{ key: RevenuePeriod; label: string; chartTitle: string }> = [
   { key: 'today', label: 'Today', chartTitle: 'Collection by hour' },
@@ -24,7 +25,7 @@ const PERIODS: Array<{ key: RevenuePeriod; label: string; chartTitle: string }> 
   { key: 'month', label: 'This Month', chartTitle: 'Weekly collection this month' },
 ];
 
-export default function FinancialManagementRoute() {
+function FinancialManagementRoute() {
   const { getRevenue, invoices } = useApp();
   const params = useLocalSearchParams<{ period?: string }>();
   const navigation = useNavigation();
@@ -514,3 +515,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(FinancialManagementRoute, { module: 'financial-management', title: 'Financial Management', purpose: 'Financial management' });

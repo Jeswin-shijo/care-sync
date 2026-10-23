@@ -25,6 +25,7 @@ import { OverrideSheet } from '../components/portals/OverrideSheet';
 import { SafetyEngineSheet } from '../components/portals/SafetyEngineSheet';
 import { computeSafetyChecks, overrideNote, SafetyChecksRow } from '../components/portals/SafetyChecksRow';
 import { durationLabel } from '../components/portals/useNow';
+import { withPreview } from '../components/common/PreviewScope';
 
 type Tab = 'pending' | 'hold' | 'dispensed';
 type Dispensed = Extract<DispenseResult, { ok: true }>;
@@ -38,7 +39,7 @@ const EXIT_UI: Record<Tab, { label: string; icon: keyof typeof Ionicons.glyphMap
   pending: { label: 'Back to review', icon: 'refresh-circle', color: colors.primary },
 };
 
-export default function PharmacyReviewRoute() {
+function PharmacyReviewRoute() {
   const {
     setActiveRole,
     prescriptionReviews,
@@ -933,3 +934,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(PharmacyReviewRoute, { module: 'pharmacy-review', title: 'Pharmacy Review', purpose: 'Reviewing and dispensing prescriptions' });

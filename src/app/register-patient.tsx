@@ -268,7 +268,7 @@ function RegisterPatientScreen() {
     goTo(step + 1);
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (submittingRef.current || result) return;
     const firstInvalid = [0, 1, 2, 3].find((i) => !stepValid(i));
     if (firstInvalid !== undefined) {
@@ -279,33 +279,35 @@ function RegisterPatientScreen() {
     }
     submittingRef.current = true;
     setSubmitting(true);
-    // Brief pause so the button's progress state is visible (simulated save).
-    setTimeout(() => {
-      try {
-        const res = registerPatient({
-          name: form.name.trim().replace(/\s+/g, ' '),
-          phone: form.phone,
-          dob: form.dob,
-          gender: form.gender!,
-          address: form.address.trim(),
-          bloodGroup: form.bloodGroup,
-          insurance: insuranceOf(form),
-          email: form.email.trim() || undefined,
-          emergencyContact: emergencyOf(form),
-          allergies: allergiesOf(form),
-          conditions: conditionsOf(form),
-          paymentMode: form.paymentMode,
-        });
-        setResult(res);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        scrollRef.current?.scrollTo({ y: 0, animated: false });
-      } catch (err: any) {
+    try {
+      const res = await registerPatient({
+        name: form.name.trim().replace(/\s+/g, ' '),
+        phone: form.phone,
+        dob: form.dob,
+        gender: form.gender!,
+        address: form.address.trim(),
+        bloodGroup: form.bloodGroup,
+        insurance: insuranceOf(form),
+        email: form.email.trim() || undefined,
+        emergencyContact: emergencyOf(form),
+        allergies: allergiesOf(form),
+        conditions: conditionsOf(form),
+        paymentMode: form.paymentMode,
+      });
+      // Null: the server refused it and the user has been told why; the form stays filled in.
+      if (!res) {
         submittingRef.current = false;
-        Alert.alert('Registration Failed', err?.message ?? 'Please try again.');
-      } finally {
-        setSubmitting(false);
+        return;
       }
-    }, 450);
+      setResult(res);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    } catch (err: any) {
+      submittingRef.current = false;
+      Alert.alert('Registration Failed', err?.message ?? 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const registerAnother = () => {

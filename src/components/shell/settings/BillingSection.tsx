@@ -12,7 +12,7 @@ import { Button } from '../../common/Button';
 import { KeyboardAwareContainer, formScrollProps } from '../../common/KeyboardAware';
 import { FadeInView } from '../../common/Motion';
 import { formatCurrency } from '../../../utils/formatters';
-import { todayISO } from '../../../utils/dates';
+import { todayISO, clinicNow } from '../../../utils/dates';
 import { ChoiceChips } from '../Controls';
 import { FormField } from '../FormField';
 import { SettingsGroup, SettingsRow, ToggleRow } from '../SettingsRow';
@@ -44,7 +44,7 @@ export const BillingSection: React.FC = () => {
   const [footerTouched, setFooterTouched] = useState(false);
 
   const split = useMemo(() => paymentModeSplit(invoices, todayISO()), [invoices]);
-  const year = new Date().getFullYear();
+  const year = clinicNow().getFullYear();
   const numbering = useMemo(
     () => (Object.keys(INVOICE_PREFIX) as Invoice['type'][]).map((type) => ({ type, heading: RECEIPT_HEADING[type], next: nextInvoiceNumber(invoices, type, year) })),
     [invoices, year]

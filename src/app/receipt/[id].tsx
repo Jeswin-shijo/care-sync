@@ -28,8 +28,9 @@ import {
 } from '../../components/finance/invoiceUtils';
 import { printOrShareReceipt, type ExportAction } from '../../utils/pdfGenerator';
 import { formatCurrency } from '../../utils/formatters';
+import { withSampleFallback } from '../../components/common/PreviewScope';
 
-export default function ReceiptDetailRoute() {
+function ReceiptDetailRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { invoices, doctors, hospitalProfile, settings, getPatient, markInvoicePaid } = useApp();
   const { showToast } = useToast();
@@ -65,11 +66,13 @@ export default function ReceiptDetailRoute() {
 
   const exportReceipt = (action: ExportAction) => printOrShareReceipt(printData, action);
 
-  const collect = (mode: PaymentMode) => {
+  const collect = async (mode: PaymentMode) => {
     setCollectOpen(false);
+    const updated = await markInvoicePaid(invoice.id, mode);
+    // Null: the server refused the payment and the user has been told why.
+    if (!updated) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    const updated = markInvoicePaid(invoice.id, mode);
-    if (updated?.status === 'Paid') {
+    if (updated.status === 'Paid') {
       showToast({
         type: 'success',
         title: 'Payment collected',
@@ -305,3 +308,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
   },
 });
+
+// Preview modules link here with sample records; those open on the sample hospital.
+export default withSampleFallback(ReceiptDetailRoute, (store, id) => store.invoices.some((i) => i.id === id));

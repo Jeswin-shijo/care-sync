@@ -20,9 +20,24 @@ interface AccessGateProps {
  * one-tap switch to the owning role instead of silently letting anyone in.
  */
 export const AccessGate: React.FC<AccessGateProps> = ({ module, purpose, children }) => {
-  const { activeRole, setActiveRole } = useApp();
+  const { activeRole, setActiveRole, canSwitchRole } = useApp();
   if (canAccess(activeRole, module)) return <>{children}</>;
   const owner = ownerRoleFor(module);
+  if (!canSwitchRole) {
+    // A signed-in account's role is fixed; say who to ask instead of offering a switch.
+    return (
+      <FadeInView style={styles.wrap}>
+        <View style={styles.lock}>
+          <Ionicons name="lock-closed" size={30} color={colors.warning} />
+        </View>
+        <Text style={styles.title}>Not available for your account</Text>
+        <Text style={styles.body}>
+          {purpose} isn’t part of the {ROLE_LABEL[activeRole]} role. Ask a hospital administrator if your job needs it.
+        </Text>
+        <Button title="Go Back" variant="ghost" onPress={leaveScreen} style={{ alignSelf: 'stretch', marginTop: spacing.lg }} />
+      </FadeInView>
+    );
+  }
   return (
     <FadeInView style={styles.wrap}>
       <View style={styles.lock}>

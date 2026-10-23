@@ -36,11 +36,12 @@ import { alertAfterClose } from '../../components/clinical/alerts';
 import { buildPatientSummaryDoc } from '../../components/clinical/documents';
 import { HistoryTab, OverviewTab, ReportsTab, VisitsTab } from '../../components/clinical/PatientRecordTabs';
 import type { IconName } from '../../components/clinical/types';
+import { withSampleFallback } from '../../components/common/PreviewScope';
 
 const TABS = ['Overview', 'Medical History', 'Visits', 'Reports'] as const;
 type Tab = (typeof TABS)[number];
 
-export default function PatientDetailsRoute() {
+function PatientDetailsRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const pid = Array.isArray(id) ? id[0] : id;
   const { getPatient } = useApp();
@@ -514,3 +515,6 @@ const styles = StyleSheet.create({
   menuLabel: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.semiBold, color: colors.text },
   menuSub: { fontSize: typography.fontSizes.xs + 1, color: colors.textSecondary, marginTop: 1 },
 });
+
+// Preview modules link here with sample records; those open on the sample hospital.
+export default withSampleFallback(PatientDetailsRoute, (store, id) => !!store.getPatient(id));

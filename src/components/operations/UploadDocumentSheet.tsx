@@ -42,7 +42,7 @@ const fileNameFor = (source: Source, title: string, type: DocType | null) => {
 };
 
 export const UploadDocumentSheet: React.FC<Props> = ({ visible, onClose, initialPatientId, onUploaded }) => {
-  const { getPatient, addDocument, activeRole, patientAppUser } = useApp();
+  const { getPatient, addDocument, activeRole, actorName } = useApp();
 
   const [patientId, setPatientId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -68,7 +68,7 @@ export const UploadDocumentSheet: React.FC<Props> = ({ visible, onClose, initial
   );
 
   const patient = getPatient(patientId);
-  const uploadedBy = activeRole === 'patient' ? patientAppUser?.name ?? ROLE_ACTOR.patient : ROLE_ACTOR[activeRole];
+  const uploadedBy = actorName;
 
   const errors = {
     patient: !patient ? 'Select whose record this document belongs to' : null,
@@ -109,7 +109,7 @@ export const UploadDocumentSheet: React.FC<Props> = ({ visible, onClose, initial
     setShowErrors(false);
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (submitting.current) return;
     setShowErrors(true);
     if (hasErrors || !patient || !type || !attachment) {
@@ -117,9 +117,11 @@ export const UploadDocumentSheet: React.FC<Props> = ({ visible, onClose, initial
       return;
     }
     submitting.current = true;
-    const doc = addDocument({ patientId: patient.id, title: title.trim(), type, size: attachment.size, uploadedBy });
-    reset();
+    const doc = await addDocument({ patientId: patient.id, title: title.trim(), type, size: attachment.size, uploadedBy });
     submitting.current = false;
+    // Null: the server refused it and the user has been told why; the form stays filled in.
+    if (!doc) return;
+    reset();
     onUploaded(doc);
   };
 

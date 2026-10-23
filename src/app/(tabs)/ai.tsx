@@ -23,6 +23,7 @@ const GREETING_NAME: Record<UserRole, string> = {
   nurse: 'Anjali',
   lab: 'Vishnu',
   pharmacy: 'Neethu',
+  reception: 'there',
   patient: 'there',
 };
 
@@ -35,6 +36,20 @@ const SUGGESTIONS: Suggestion[] = [
   { text: 'Show all diabetic patients with abnormal HbA1c', icon: 'flask-outline', color: colors.danger },
   { text: "Check Rahul's drug interactions", icon: 'medkit-outline', color: colors.orange },
 ];
+
+/** Prompts for a live hospital, naming its own patients. */
+const liveSuggestions = (patientNames: string[]): Suggestion[] => {
+  const [a, b] = patientNames;
+  const first = (name?: string) => name?.split(' ')[0];
+  return [
+    { text: "Show today's appointments", icon: 'calendar-outline', color: colors.primary },
+    { text: 'Find all patients with pending bills above ₹1,000', icon: 'wallet-outline', color: colors.warning },
+    { text: "Generate today's OPD collection report", icon: 'bar-chart-outline', color: colors.success },
+    ...(a ? [{ text: `Summarise ${a}'s record`, icon: 'document-text-outline' as const, color: colors.primary }] : []),
+    ...(b ? [{ text: `Check ${first(b)}'s drug interactions`, icon: 'medkit-outline' as const, color: colors.orange }] : []),
+    { text: 'Show all diabetic patients with abnormal HbA1c', icon: 'flask-outline', color: colors.danger },
+  ];
+};
 
 /** Puts the prompts a role reaches for first at the top; the rest keep the design order. */
 const ROLE_FIRST: Partial<Record<UserRole, string>> = {
@@ -49,27 +64,34 @@ const VOICE_TRANSCRIPTS: Record<UserRole, string[]> = {
   nurse: ['Which patients are admitted?', 'Show bed availability in ICU', "Show today's appointments"],
   lab: ['Any critical lab results today?', 'Show all diabetic patients with abnormal HbA1c'],
   pharmacy: ["Check Rahul's drug interactions", 'Any prescriptions flagged for safety?'],
+  reception: ["Show today's appointments", 'Find all patients with pending bills above 10,000'],
   patient: [],
 };
 
 const GUARDRAIL = 'MediOS AI answers only from hospital records • cites sources • a clinician approves anything it drafts';
 
 export default function AiAssistantRoute() {
-  const { activeRole, aiChatMessages, aiTyping, sendAiMessage, clearAiChat, setActiveRole, hospitalProfile } = useApp();
+  const { activeRole, aiChatMessages, aiTyping, sendAiMessage, clearAiChat, setActiveRole, canSwitchRole, hospitalProfile, dataMode, actorName, patients } =
+    useApp();
+  const live = dataMode === 'live';
+  // "Dr. Shajin" stays as is; "Nurse Anjali Thomas" → "Anjali".
+  const greetingName = live ? (/^dr\.?\s/i.test(actorName) ? actorName.split(' ').slice(0, 2).join(' ') : actorName.replace(/^nurse\s+/i, '').split(' ')[0]) : GREETING_NAME[activeRole];
 
   const suggestions = useMemo(() => {
+    // The demo prompts name the sample hospital's patients; live ones use real records.
+    const base = live ? liveSuggestions(patients.map((p) => p.name)) : SUGGESTIONS;
     const first = ROLE_FIRST[activeRole];
-    return first ? [...SUGGESTIONS.filter((s) => s.text === first), ...SUGGESTIONS.filter((s) => s.text !== first)] : SUGGESTIONS;
-  }, [activeRole]);
+    return first ? [...base.filter((s) => s.text === first), ...base.filter((s) => s.text !== first)] : base;
+  }, [activeRole, live, patients]);
 
-  const voice = useMemo(
-    () => ({
-      transcripts: VOICE_TRANSCRIPTS[activeRole],
+  const voice = useMemo(() => {
+    const transcripts = live ? liveSuggestions(patients.map((p) => p.name)).map((s) => s.text) : VOICE_TRANSCRIPTS[activeRole];
+    return {
+      transcripts,
       subtitle: 'Ask your question out loud',
-      hint: `Try: “${VOICE_TRANSCRIPTS[activeRole][0] ?? "Show today's appointments"}”`,
-    }),
-    [activeRole]
-  );
+      hint: `Try: “${transcripts[0] ?? "Show today's appointments"}”`,
+    };
+  }, [activeRole, live, patients]);
 
   const onActionPress = useCallback((card: AiActionCard) => {
     if (card.route) openRoute(card.route, card.params);
@@ -121,12 +143,14 @@ export default function AiAssistantRoute() {
             actionTitle="Open Patient Assistant"
             onActionPress={() => router.push('/patient-assistant')}
           />
-          <Button
-            title="Switch to Doctor role"
-            variant="outline"
-            onPress={() => setActiveRole('doctor')}
-            icon={<Ionicons name="swap-horizontal" size={16} color={colors.primary} />}
-          />
+          {canSwitchRole && (
+            <Button
+              title="Switch to Doctor role"
+              variant="outline"
+              onPress={() => setActiveRole('doctor')}
+              icon={<Ionicons name="swap-horizontal" size={16} color={colors.primary} />}
+            />
+          )}
         </View>
       </SafeAreaView>
     );
@@ -136,7 +160,7 @@ export default function AiAssistantRoute() {
     <View>
       <FadeInView style={styles.hero}>
         <RobotAvatar size={88} />
-        <Text style={styles.hello}>Hello {GREETING_NAME[activeRole]} 👋</Text>
+        <Text style={styles.hello}>Hello {greetingName} 👋</Text>
         <Text style={styles.helloSub}>How can I help you today?</Text>
         <View style={styles.rolePill}>
           <PulseDot size={6} color={colors.success} />

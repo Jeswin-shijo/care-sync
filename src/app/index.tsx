@@ -1,18 +1,40 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Animated, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useApp } from '../context/AppContext';
+import { useSession } from '../context/SessionContext';
 import { colors, radius, spacing, typography } from '../constants/theme';
 import { HOSPITAL_CONFIG } from '../constants/config';
 import { FadeInView, PressableScale, useReducedMotion } from '../components/common/Motion';
 import { SplashIllustration } from '../components/shell/SplashIllustration';
 import { AppLogo } from '../components/common/AppLogo';
 
+/**
+ * Welcome screen and the router's anchor: it resumes the saved session, waits for
+ * the hospital's records, and opens the app. Signing out or losing a session
+ * lands here again.
+ */
 export default function SplashScreen() {
-  const { hospitalProfile } = useApp();
+  const { status, restoreError, retryRestore, signOut } = useSession();
+  const { hospitalProfile, dataStatus, dataError, refreshData } = useApp();
+  const live = status === 'live';
+  const hospitalName = live && dataStatus === 'ready' ? hospitalProfile.name : 'Your Hospital';
+
+  // Into the app as soon as there is something to show.
+  useEffect(() => {
+    if (status === 'demo' || (live && dataStatus === 'ready')) router.replace('/(tabs)');
+  }, [status, live, dataStatus]);
+
+  const busy = status === 'checking' || (live && dataStatus !== 'error');
+  const cta = status === 'checking' ? 'Checking your session…' : live ? (dataStatus === 'error' ? 'Try again' : 'Loading the hospital…') : 'Sign in';
+  const onCta = () => {
+    if (live) refreshData();
+    else router.push('/login');
+  };
+  const problem = live && dataStatus === 'error' ? dataError : status === 'signed-out' ? restoreError : null;
   const { height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const compact = height < 700;
@@ -62,18 +84,39 @@ export default function SplashScreen() {
         </View>
 
         <FadeInView delay={420} offset={40} duration={560} style={styles.illustrationWrap}>
-          <SplashIllustration hospitalName={hospitalProfile.name} style={styles.illustration} />
+          <SplashIllustration hospitalName={hospitalName} style={styles.illustration} />
         </FadeInView>
 
         <FadeInView delay={620} style={styles.actions}>
+          {problem && (
+            <View style={styles.problem} accessibilityLiveRegion="polite">
+              <Ionicons name="cloud-offline-outline" size={18} color={colors.warningText} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.problemText}>{problem}</Text>
+                <View style={styles.problemActions}>
+                  {status === 'signed-out' && (
+                    <Pressable onPress={retryRestore} hitSlop={8} accessibilityRole="button">
+                      <Text style={styles.problemLink}>Retry</Text>
+                    </Pressable>
+                  )}
+                  {live && (
+                    <Pressable onPress={signOut} hitSlop={8} accessibilityRole="button">
+                      <Text style={styles.problemLink}>Sign out</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
           <PressableScale
             haptic
             scaleTo={0.96}
-            onPress={() => router.replace('/(tabs)')}
-            style={styles.ctaShadow}
+            onPress={onCta}
+            disabled={busy}
+            style={[styles.ctaShadow, busy && { opacity: 0.85 }]}
             accessibilityRole="button"
-            accessibilityLabel="Get Started"
-            accessibilityHint={`Opens the ${hospitalProfile.name} dashboard`}
+            accessibilityLabel={cta}
+            accessibilityState={{ disabled: busy, busy }}
           >
             <LinearGradient
               colors={[colors.primary, '#165BEB']}
@@ -81,8 +124,9 @@ export default function SplashScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Text style={styles.ctaText}>Get Started</Text>
-              <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              {busy && <ActivityIndicator color="#FFFFFF" />}
+              <Text style={styles.ctaText}>{cta}</Text>
+              {!busy && <Ionicons name={live ? 'refresh' : 'arrow-forward'} size={20} color="#FFFFFF" />}
             </LinearGradient>
           </PressableScale>
           <Text style={styles.footerTagline}>Secure • Reliable • All-in-One</Text>
@@ -188,6 +232,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSizes.md + 1,
     fontWeight: typography.fontWeights.bold,
   },
+  problem: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignSelf: 'stretch',
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningLight,
+  },
+  problemText: { fontSize: typography.fontSizes.sm, color: colors.warningText, lineHeight: 19 },
+  problemActions: { flexDirection: 'row', gap: spacing.lg, marginTop: 6 },
+  problemLink: { fontSize: typography.fontSizes.sm, color: colors.primary, fontWeight: typography.fontWeights.bold },
   footerTagline: {
     marginTop: spacing.md,
     fontSize: typography.fontSizes.xs + 1,

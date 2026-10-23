@@ -21,6 +21,7 @@ import { CountTabs } from '../components/portals/CountTabs';
 import { ExitCollapse } from '../components/portals/ExitCollapse';
 import { VitalsFormSheet } from '../components/portals/VitalsFormSheet';
 import { durationLabel, minutesOfDay, minutesSince, timeAgoLabel, useNow } from '../components/portals/useNow';
+import { withPreview } from '../components/common/PreviewScope';
 
 type TaskFilter = 'All' | 'Pending' | 'Completed';
 type IconName = keyof typeof Ionicons.glyphMap;
@@ -36,7 +37,7 @@ const WARD_ICON: Record<WardInfo['type'], IconName> = { ICU: 'heart', Deluxe: 's
 /** Observations are due every 4 hours on the ward. */
 const OBS_INTERVAL_MIN = 240;
 
-export default function NursePortalRoute() {
+function NursePortalRoute() {
   const { setActiveRole, bedSummary, wardInfo, nurseTasks, toggleNurseTask, patients, getLatestVitals } = useApp();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
@@ -766,3 +767,6 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(NursePortalRoute, { module: 'nurse-portal', title: 'Nurse Portal', purpose: 'The nurse portal' });

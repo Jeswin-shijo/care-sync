@@ -24,6 +24,7 @@ import { PaymentSheet } from '../components/portals/PaymentSheet';
 import { ProgressRing } from '../components/portals/ProgressRing';
 import { VisitDetailSheet } from '../components/portals/VisitDetailSheet';
 import { minutesOfDay, useNow } from '../components/portals/useNow';
+import { withPreview } from '../components/common/PreviewScope';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type DoseStatus = 'Taken' | 'Due now' | 'Upcoming' | 'Missed';
@@ -57,7 +58,7 @@ const callNumber = (number: string) =>
     Alert.alert('Call failed', `This device can't place calls. Please dial ${number} from a phone.`)
   );
 
-export default function PatientPortalRoute() {
+function PatientPortalRoute() {
   const {
     setActiveRole,
     patientAppUser: patient,
@@ -972,3 +973,6 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(PatientPortalRoute, { module: 'patient-portal', title: 'Patient App', purpose: 'The patient app' });

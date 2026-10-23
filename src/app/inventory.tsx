@@ -27,6 +27,7 @@ import {
 } from '../components/operations/inventory';
 import { ChoiceChips, KpiRow, Notice, Segmented } from '../components/operations/OpsUI';
 import { plural } from '../components/operations/utils';
+import { withPreview } from '../components/common/PreviewScope';
 
 type Tab = 'medicines' | 'supplies';
 
@@ -47,7 +48,7 @@ const medicineRank = (m: Medicine) => {
   return s.out ? 0 : s.expired ? 1 : s.low ? 2 : s.expiring ? 3 : 4;
 };
 
-export default function InventoryRoute() {
+function InventoryRoute() {
   const { medicines, supplies, raiseIndent, receiveIndent, raiseMedicineIndent, receiveMedicineIndent } = useApp();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
@@ -390,3 +391,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(InventoryRoute, { module: 'inventory', title: 'Inventory', purpose: 'Inventory and indents' });

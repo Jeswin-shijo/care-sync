@@ -19,6 +19,7 @@ import {
   isoDaysFromToday,
   todayISO,
   weekdayShort,
+  clinicNow,
 } from '../utils/dates';
 
 /**
@@ -90,7 +91,7 @@ const pct = (part: number, whole: number): number => (whole > 0 ? Math.round((pa
 const sumBy = <T,>(list: T[], pick: (item: T) => number): number => list.reduce((total, item) => total + pick(item), 0);
 const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 
-const generatedAtLabel = (): string => `${formatDisplayDate(new Date())}, ${formatClock()}`;
+const generatedAtLabel = (): string => `${formatDisplayDate(clinicNow())}, ${formatClock()}`;
 
 /** "Dr. Arjun Nair (Cardiology)" → { name: "Dr. Arjun Nair", department: "Cardiology" } */
 const splitDoctor = (doctorName?: string): { name: string; department?: string } | null => {
@@ -187,7 +188,10 @@ const dailyCollection = (s: HospitalState): ReportBody => {
     chartTitle: 'Itemised receipts by payment mode',
     chartUnit: 'currency',
     notes: [
-      `Reconciliation: ${inr(paidTotal)} itemised in CareSync + ${inr(TODAY_COLLECTION_BASE)} from counters not itemised (other OPD desks, emergency, services) = ${inr(stats.todayCollection)}.`,
+      // The demo pads collections with counters it does not itemise; live figures are all itemised.
+      s.live
+        ? `Collected today: ${inr(stats.todayCollection)}, every receipt itemised.`
+        : `Reconciliation: ${inr(paidTotal)} itemised in CareSync + ${inr(TODAY_COLLECTION_BASE)} from counters not itemised (other OPD desks, emergency, services) = ${inr(stats.todayCollection)}.`,
       paidTotal > 0
         ? `Payment modes (itemised): ${modes.map((m) => `${m} ${pct(split[m], paidTotal)}%`).join(' • ')}.`
         : 'No itemised receipts collected yet today.',
@@ -507,7 +511,7 @@ const patientRegister = (s: HospitalState): ReportBody => {
 
   return {
     kpis: [
-      { label: 'Registry Total', value: count(PATIENT_REGISTRY_BASE + s.patients.length) },
+      { label: 'Registry Total', value: count((s.live ? 0 : PATIENT_REGISTRY_BASE) + s.patients.length) },
       { label: 'Active', value: count(byStatus('Active')) },
       { label: 'Admitted', value: count(byStatus('Admitted')) },
       { label: 'Insured', value: `${pct(insured, list.length)}%` },
@@ -525,7 +529,7 @@ const patientRegister = (s: HospitalState): ReportBody => {
     chartTitle: 'Patients by age band',
     chartUnit: 'count',
     notes: [
-      `${count(PATIENT_REGISTRY_BASE)} registrations from before CareSync are counted in the registry total but not itemised.`,
+      ...(s.live ? [] : [`${count(PATIENT_REGISTRY_BASE)} registrations from before CareSync are counted in the registry total but not itemised.`]),
       `Registered in the last 30 days: ${count(thisMonth)}. Gender split: Female ${byGender('Female')} • Male ${byGender('Male')} • Other ${byGender('Other')}.`,
       `Discharged: ${count(byStatus('Discharged'))}. Self-pay patients: ${count(list.length - insured)}.`,
     ],
@@ -710,7 +714,11 @@ const labTat = (s: HospitalState): ReportBody => {
   const awaiting = samples.filter((x) => x.status === 'New' && (x.collectedAt === '—' || !x.collectedAt));
 
   const notes = [
-    `Pipeline totals include analyzer volume not itemised in CareSync (base: New ${LAB_PIPELINE_BASE.New}, Processing ${LAB_PIPELINE_BASE.Processing}, Completed ${LAB_PIPELINE_BASE.Completed}, Abnormal ${LAB_PIPELINE_BASE.Abnormal}).`,
+    ...(s.live
+      ? []
+      : [
+          `Pipeline totals include analyzer volume not itemised in CareSync (base: New ${LAB_PIPELINE_BASE.New}, Processing ${LAB_PIPELINE_BASE.Processing}, Completed ${LAB_PIPELINE_BASE.Completed}, Abnormal ${LAB_PIPELINE_BASE.Abnormal}).`,
+        ]),
     abnormal.length
       ? `Abnormal results to acknowledge: ${abnormal.map((x) => `${x.patientName} — ${testName(x.testName)}${x.flag ? ` (${x.flag})` : ''}`).join('; ')}.`
       : 'No abnormal results today.',

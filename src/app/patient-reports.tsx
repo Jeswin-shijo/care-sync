@@ -19,6 +19,7 @@ import { CardAction } from '../components/portals/CardAction';
 import { CountTabs } from '../components/portals/CountTabs';
 import { ParamTable } from '../components/portals/ParamTable';
 import { labReportSpec, radiologyReportSpec } from '../components/portals/documents';
+import { withPreview } from '../components/common/PreviewScope';
 
 type Tab = 'all' | 'lab' | 'imaging' | 'pending';
 
@@ -26,7 +27,7 @@ const LAB_COLLECTION = HOSPITAL_LOCATIONS.find((l) => /laboratory/i.test(l.name)
 const RADIOLOGY = HOSPITAL_LOCATIONS.find((l) => /radiology/i.test(l.name));
 const shortTest = (name: string) => name.split('(')[0].trim();
 
-export default function PatientReportsRoute() {
+function PatientReportsRoute() {
   const params = useLocalSearchParams<{ patientId?: string | string[] }>();
   const paramPid = Array.isArray(params.patientId) ? params.patientId[0] : params.patientId;
   const { patientAppUser, getPatient, getLabResults, getLabOrders, getRadiologyOrders, hospitalProfile, sendPatientAiMessage } = useApp();
@@ -503,3 +504,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(PatientReportsRoute, { module: 'patient-portal', title: 'My Reports', purpose: 'The patient app' });

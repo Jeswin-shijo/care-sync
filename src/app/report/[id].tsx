@@ -105,7 +105,7 @@ export default function ReportDetailRoute() {
     );
   }
 
-  const preparedBy = ROLE_ACTOR[app.activeRole] ?? 'CareSync';
+  const preparedBy = app.actorName;
   const exportReport = (action: ExportAction) =>
     exportDocument(toDocumentSpec(report, app.hospitalProfile, preparedBy), `${report.title.replace(/[^\w]+/g, '-')}-${todayISO()}.pdf`, action);
 

@@ -203,7 +203,7 @@ export const VitalsFormSheet: React.FC<VitalsFormSheetProps> = ({ visible, onClo
     else Keyboard.dismiss();
   };
 
-  const save = () => {
+  const save = async () => {
     if (saving) return;
     setSubmitted(true);
     if (!patient || !input) {
@@ -213,7 +213,9 @@ export const VitalsFormSheet: React.FC<VitalsFormSheetProps> = ({ visible, onClo
     setSaving(true);
     try {
       const openTask = nurseTasks.find((t) => t.patientId === patient.id && t.category === 'Vitals' && !t.completed);
-      const result = recordVitals(patient.id, input);
+      const result = await recordVitals(patient.id, input);
+      // Null: the server refused it and the user has been told why; the readings stay entered.
+      if (!result) return;
       finishClose();
       const taskNote = openTask ? ` • "${openTask.title}" marked done` : '';
       if (result.flags.length) {

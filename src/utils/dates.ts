@@ -9,8 +9,22 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export const startOfToday = (): Date => {
+// Read once: Metro inlines EXPO_PUBLIC_ variables at build time (dot access only).
+const PINNED_DAY = /^(\d{4})-(\d{2})-(\d{2})$/.exec(process.env.EXPO_PUBLIC_CLINIC_DATE ?? '');
+
+/**
+ * The clinic's "now". Development pins the day to the backend's seeded demo day
+ * with EXPO_PUBLIC_CLINIC_DATE (YYYY-MM-DD, like the web app's VITE_CLINIC_DATE);
+ * the time of day is always real. Unset, this is plain `new Date()`.
+ */
+export const clinicNow = (): Date => {
   const d = new Date();
+  if (PINNED_DAY) d.setFullYear(Number(PINNED_DAY[1]), Number(PINNED_DAY[2]) - 1, Number(PINNED_DAY[3]));
+  return d;
+};
+
+export const startOfToday = (): Date => {
+  const d = clinicNow();
   d.setHours(0, 0, 0, 0);
   return d;
 };
@@ -87,7 +101,7 @@ export const greetingForNow = (date: Date = new Date()): string => {
 };
 
 /** "10:05 AM" */
-export const formatClock = (date: Date = new Date()): string => {
+export const formatClock = (date: Date = clinicNow()): string => {
   const h = date.getHours();
   const h12 = h % 12 === 0 ? 12 : h % 12;
   return `${pad(h12)}:${pad(date.getMinutes())} ${h < 12 ? 'AM' : 'PM'}`;

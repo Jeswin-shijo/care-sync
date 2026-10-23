@@ -4,15 +4,16 @@ import type { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../context/AppContext';
 import type { PaymentMode } from '../../context/AppContext';
 import { useReducedMotion } from '../common/Motion';
+import { clinicNow } from '../../utils/dates';
 
 /** Re-renders on every wall-clock minute so "now"-relative UI (past slots, the Now divider) stays current. */
 export const useMinuteTick = (): Date => {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => clinicNow());
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | undefined;
     const align = setTimeout(() => {
-      setNow(new Date());
-      interval = setInterval(() => setNow(new Date()), 60000);
+      setNow(clinicNow());
+      interval = setInterval(() => setNow(clinicNow()), 60000);
     }, 60000 - (Date.now() % 60000) + 50);
     return () => {
       clearTimeout(align);

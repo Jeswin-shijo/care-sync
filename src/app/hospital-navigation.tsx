@@ -16,6 +16,7 @@ import { KeyboardAwareContainer, formScrollProps } from '../components/common/Ke
 import { FadeInView, PressableScale, stagger } from '../components/common/Motion';
 import { CardAction } from '../components/portals/CardAction';
 import { FloorMap, iconFor } from '../components/portals/FloorMap';
+import { withPreview } from '../components/common/PreviewScope';
 
 const QUICK_PICKS = ['loc-6', 'loc-5', 'loc-3', 'loc-1'];
 
@@ -33,7 +34,7 @@ const stepsFor = (loc: HospitalLocation): string[] => {
   return [start, ...middle, `You have arrived at ${loc.name}.`];
 };
 
-export default function HospitalNavigationRoute() {
+function HospitalNavigationRoute() {
   const params = useLocalSearchParams<{ focus?: string | string[] }>();
   const focus = Array.isArray(params.focus) ? params.focus[0] : params.focus;
   const { sendPatientAiMessage, hospitalProfile } = useApp();
@@ -459,3 +460,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(HospitalNavigationRoute, { module: 'patient-portal', title: 'Hospital Navigation', purpose: 'The patient app' });

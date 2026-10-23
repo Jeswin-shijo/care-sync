@@ -5,6 +5,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useApp } from '../../context/AppContext';
+import { useSession } from '../../context/SessionContext';
+import { ROLE_LABEL } from '../../logic/access';
 import type { Appointment } from '../../data/mockData';
 import type { AiAlert } from '../../logic/clinical';
 import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
@@ -62,7 +64,15 @@ export default function DashboardRoute() {
     getRevenue,
     getPatient,
     setSelectedPatientId,
+    patients,
+    invoices,
+    activeRole,
+    actorName,
+    dataMode,
+    refreshData,
   } = useApp();
+  const { user } = useSession();
+  const live = dataMode === 'live';
 
   const [refreshing, setRefreshing] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(() => formatClock());
@@ -76,14 +86,13 @@ export default function DashboardRoute() {
     timers.current.push(setTimeout(fn, ms));
   };
 
-  const onRefresh = useCallback(() => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    later(() => {
-      setUpdatedAt(formatClock());
-      setRefreshKey((k) => k + 1);
-      setRefreshing(false);
-    }, 800);
-  }, []);
+    await refreshData();
+    setUpdatedAt(formatClock());
+    setRefreshKey((k) => k + 1);
+    setRefreshing(false);
+  }, [refreshData]);
 
   const revenue = getRevenue('today');
   const topAlerts = aiAlerts.slice(0, 3);
@@ -114,6 +123,8 @@ export default function DashboardRoute() {
   };
 
   const growth = `${revenue.growthPct >= 0 ? '+' : ''}${revenue.growthPct}%`;
+  const admittedCount = patients.filter((p) => p.status === 'Admitted').length;
+  const paymentsToday = invoices.filter((i) => i.status === 'Paid' && i.dateISO === todayISO()).length;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
@@ -121,14 +132,14 @@ export default function DashboardRoute() {
         showBack={false}
         titleComponent={
           <View style={styles.profileRow}>
-            <Avatar name={HOSPITAL_CONFIG.doctorName} size={44} showStatus />
+            <Avatar name={live ? actorName : HOSPITAL_CONFIG.doctorName} size={44} showStatus />
             <View style={styles.profileText}>
               <Text style={styles.greetingText}>{localizedGreeting(settings.language) ?? greetingForNow()},</Text>
               <Text style={styles.doctorNameText} numberOfLines={1}>
-                {HOSPITAL_CONFIG.doctorName}
+                {live ? actorName : HOSPITAL_CONFIG.doctorName}
               </Text>
               <Text style={styles.doctorRoleText} numberOfLines={1}>
-                {HOSPITAL_CONFIG.doctorRole}
+                {live ? [ROLE_LABEL[activeRole], user?.department].filter(Boolean).join(' • ') : HOSPITAL_CONFIG.doctorRole}
               </Text>
             </View>
           </View>
@@ -200,8 +211,9 @@ export default function DashboardRoute() {
               <StatCard
                 title="Total Patients"
                 value={todayStats.totalPatients}
-                change="+12%"
-                subtext="vs last week"
+                // Trends need history the backend does not keep, so live shows plain counts.
+                change={live ? undefined : '+12%'}
+                subtext={live ? 'registered' : 'vs last week'}
                 icon="people"
                 iconColor="#1E6BFF"
                 iconBgColor="#EFF6FF"
@@ -210,8 +222,8 @@ export default function DashboardRoute() {
               <StatCard
                 title="OPD Today"
                 value={todayStats.opdToday}
-                change="+8%"
-                subtext="vs yesterday"
+                change={live ? undefined : '+8%'}
+                subtext={live ? `${remainingToday} still to see` : 'vs yesterday'}
                 icon="medical"
                 iconColor="#10B981"
                 iconBgColor="#ECFDF5"
@@ -220,36 +232,50 @@ export default function DashboardRoute() {
               />
             </View>
             <View style={styles.kpiRow}>
-              <StatCard
-                title="IPD Occupancy"
-                value={bedSummary.pct}
-                format={(n) => `${Math.round(n)}%`}
-                subtext={`${bedSummary.occupied}/${bedSummary.total} beds occupied`}
-                icon="bed"
-                iconColor="#8B5CF6"
-                iconBgColor="#F5F3FF"
-                delay={160}
-                onPress={() => router.push('/bed-management')}
-              >
-                <ProgressFill
-                  progress={bedSummary.pct / 100}
-                  color={occupancyColor(bedSummary.pct)}
-                  height={5}
-                  delay={200}
-                  style={styles.occupancyBar}
+              {live ? (
+                // Beds are not on the backend yet; admitted patients are.
+                <StatCard
+                  title="Admitted"
+                  value={admittedCount}
+                  subtext="inpatients now"
+                  icon="bed"
+                  iconColor="#8B5CF6"
+                  iconBgColor="#F5F3FF"
+                  delay={160}
+                  onPress={() => goToTab('patients')}
                 />
-              </StatCard>
+              ) : (
+                <StatCard
+                  title="IPD Occupancy"
+                  value={bedSummary.pct}
+                  format={(n) => `${Math.round(n)}%`}
+                  subtext={`${bedSummary.occupied}/${bedSummary.total} beds occupied`}
+                  icon="bed"
+                  iconColor="#8B5CF6"
+                  iconBgColor="#F5F3FF"
+                  delay={160}
+                  onPress={() => router.push('/bed-management')}
+                >
+                  <ProgressFill
+                    progress={bedSummary.pct / 100}
+                    color={occupancyColor(bedSummary.pct)}
+                    height={5}
+                    delay={200}
+                    style={styles.occupancyBar}
+                  />
+                </StatCard>
+              )}
               <StatCard
                 title="Revenue Today"
                 value={todayStats.todayCollection}
                 format={(n) => formatCurrency(n)}
-                change={growth}
-                subtext={revenue.comparedTo}
+                change={live ? undefined : growth}
+                subtext={live ? `${paymentsToday} payment${paymentsToday === 1 ? '' : 's'} collected` : revenue.comparedTo}
                 icon="cash"
                 iconColor="#F59E0B"
                 iconBgColor="#FFFBEB"
                 delay={240}
-                onPress={() => router.push('/financial-management')}
+                onPress={() => (live ? goToTab('billing') : router.push('/financial-management'))}
               />
             </View>
           </View>

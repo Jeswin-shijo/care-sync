@@ -6,7 +6,7 @@ import { colors, radius, spacing, typography } from '../../../constants/theme';
 import { Badge } from '../../common/Badge';
 import { Button } from '../../common/Button';
 import { FadeInView, stagger } from '../../common/Motion';
-import { formatClock, formatDayMonth, formatDisplayDate, relativeDayLabel } from '../../../utils/dates';
+import { formatClock, formatDayMonth, formatDisplayDate, relativeDayLabel, clinicNow } from '../../../utils/dates';
 import { exportDocument } from '../../../utils/pdfGenerator';
 import { CitationChips } from '../CitationChips';
 import type { PatientContext } from '../copilotEngine';
@@ -42,7 +42,7 @@ export const SummaryPanel: React.FC<SummaryPanelProps> = ({ ctx, doctorName, hos
           ['UHID', patient.uhid],
           ['Age / Gender', `${patient.age} / ${patient.gender}`],
           ['Status', `${patient.status}${patient.room ? ` • ${patient.room}` : ''}`],
-          ['Generated', `${formatDisplayDate(new Date())}, ${formatClock()}`],
+          ['Generated', `${formatDisplayDate(clinicNow())}, ${formatClock()}`],
         ],
         sections: [
           { heading: 'Longitudinal summary', rows: lines.map((l) => [l.label, l.text] as [string, string]) },

@@ -10,7 +10,7 @@ import type {
 import type { HospitalProfile } from '../../logic/hospital';
 import { formatParamValue, parameterFlag, referenceText, vitalsFlags } from '../../logic/clinical';
 import type { DocumentSection, DocumentSpec, HospitalHeader } from '../../utils/pdfGenerator';
-import { formatClock, formatDayMonth, formatDisplayDate } from '../../utils/dates';
+import { formatClock, formatDayMonth, formatDisplayDate, clinicNow } from '../../utils/dates';
 import { formatCurrency } from '../../utils/formatters';
 import { shortTestName } from './format';
 
@@ -111,7 +111,7 @@ export const buildPatientSummaryDoc = ({
   }
   return {
     title: 'Patient Clinical Summary',
-    subtitle: `Generated on ${formatDisplayDate(new Date())} at ${formatClock()}`,
+    subtitle: `Generated on ${formatDisplayDate(clinicNow())} at ${formatClock()}`,
     meta: [
       ['Patient', patient.name],
       ['UHID', patient.uhid],

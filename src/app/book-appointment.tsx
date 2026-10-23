@@ -240,7 +240,7 @@ export default function BookAppointmentRoute() {
     setSheetPicker(false);
   };
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!sheetDoctor) return;
     const next: typeof errors = {};
     if (!patient) next.patient = 'Select the patient this appointment is for.';
@@ -252,34 +252,34 @@ export default function BookAppointmentRoute() {
     }
     setErrors({});
     setSubmitting(true);
-    setTimeout(() => {
-      if (!mounted.current) return;
-      const res = scheduleAppointment({
-        patientId: patient!.id,
-        doctorId: sheetDoctor.id,
-        date,
-        time: slot!,
-        type: visitType,
-        department: sheetDoctor.department,
-        reason: reason.trim() || undefined,
-        paymentMode: payMode,
-      });
-      setSubmitting(false);
-      if (!res.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-        if (res.error === 'SLOT_TAKEN' || res.error === 'PATIENT_BUSY') {
-          setSlot(null);
-          setErrors({ slot: ERROR_TEXT[res.error] });
-        } else if (res.error === 'UNKNOWN_PATIENT') {
-          setPatientId(lockedPatientId);
-          setErrors({ patient: ERROR_TEXT.UNKNOWN_PATIENT });
-        } else {
-          setErrors({ form: ERROR_TEXT[res.error] });
-        }
-        return;
+    const res = await scheduleAppointment({
+      patientId: patient!.id,
+      doctorId: sheetDoctor.id,
+      date,
+      time: slot!,
+      type: visitType,
+      department: sheetDoctor.department,
+      reason: reason.trim() || undefined,
+      paymentMode: payMode,
+    });
+    if (!mounted.current) return;
+    setSubmitting(false);
+    // Null: the server refused it and the user has been told why.
+    if (!res) return;
+    if (!res.ok) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      if (res.error === 'SLOT_TAKEN' || res.error === 'PATIENT_BUSY') {
+        setSlot(null);
+        setErrors({ slot: ERROR_TEXT[res.error] });
+      } else if (res.error === 'UNKNOWN_PATIENT') {
+        setPatientId(lockedPatientId);
+        setErrors({ patient: ERROR_TEXT.UNKNOWN_PATIENT });
+      } else {
+        setErrors({ form: ERROR_TEXT[res.error] });
       }
-      setBooked({ appointment: res.appointment, invoice: res.invoice });
-    }, 500);
+      return;
+    }
+    setBooked({ appointment: res.appointment, invoice: res.invoice });
   };
 
   const viewAppointments = () => {

@@ -23,6 +23,7 @@ import { ParamTable } from '../components/portals/ParamTable';
 import { ResultEntrySheet } from '../components/portals/ResultEntrySheet';
 import { SampleStepper } from '../components/portals/SampleStepper';
 import { labReportSpec } from '../components/portals/documents';
+import { withPreview } from '../components/common/PreviewScope';
 
 type Status = LabSample['status'];
 type Filter = 'All' | Status;
@@ -42,7 +43,7 @@ const EXIT_LABEL: Record<Status, string> = {
   Abnormal: 'Released • Abnormal',
 };
 
-export default function LabPortalRoute() {
+function LabPortalRoute() {
   const { setActiveRole, labSamples, labPipeline, receiveSample, hospitalProfile, getPatient } = useApp();
   const { showToast } = useToast();
   const insets = useSafeAreaInsets();
@@ -580,3 +581,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(LabPortalRoute, { module: 'lab-portal', title: 'Lab Portal', purpose: 'The lab portal' });

@@ -25,7 +25,7 @@ interface Props {
 type Priority = BloodRequest['priority'];
 
 export const BloodRequestSheet: React.FC<Props> = ({ visible, onClose, initialGroup, onCreated }) => {
-  const { bloodStock, activeRole, getPatient, createBloodRequest, patientAppUser } = useApp();
+  const { bloodStock, activeRole, getPatient, createBloodRequest, actorName } = useApp();
 
   const [patientId, setPatientId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -50,7 +50,7 @@ export const BloodRequestSheet: React.FC<Props> = ({ visible, onClose, initialGr
   const stockFor = (g: BloodGroup) => bloodStock.find((s) => s.group === g);
   const available = group ? unitsOf(stockFor(group), component) : 0;
   const incompatible = !!(group && patientGroup && !isCompatible(component, group, patientGroup));
-  const requestedBy = activeRole === 'patient' ? patientAppUser?.name ?? ROLE_ACTOR.patient : ROLE_ACTOR[activeRole];
+  const requestedBy = actorName;
 
   const selectPatient = (p: Patient) => {
     setPatientId(p.id);

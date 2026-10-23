@@ -49,6 +49,7 @@ import {
   startOfToday,
   todayISO,
   weekdayShort,
+  clinicNow,
 } from '../utils/dates';
 import { itemsTotal, nextInvoiceNumber, outstandingForPatient, paidOnDate } from './billing';
 import { checkPrescriptionSafety, type SafetyAlert } from './safety';
@@ -57,7 +58,7 @@ import { isAbnormal, latestVitals, parameterFlag, resultSummary, resultsForPatie
 // -------------------------------------------------------------
 // State
 // -------------------------------------------------------------
-export type UserRole = 'doctor' | 'nurse' | 'lab' | 'pharmacy' | 'admin' | 'patient';
+export type UserRole = 'doctor' | 'nurse' | 'lab' | 'pharmacy' | 'admin' | 'reception' | 'patient';
 export type PaymentMode = Invoice['paymentMode'];
 
 export interface CartItem {
@@ -154,6 +155,13 @@ export interface HospitalState {
   settings: HospitalSettings;
   hospitalProfile: HospitalProfile;
   patientAppUserId: string;
+  /** The signed-in staff member (live mode); the demo uses each role's sample staff name. */
+  signedInAs?: string;
+  /**
+   * Real records from the backend. The demo pads its counters with baselines so a
+   * small sample looks like a large hospital; live figures are exactly the records.
+   */
+  live?: boolean;
 }
 
 export const ROLE_ACTOR: Record<UserRole, string> = {
@@ -162,6 +170,7 @@ export const ROLE_ACTOR: Record<UserRole, string> = {
   lab: 'Vishnu Prasad',
   pharmacy: 'Neethu George',
   admin: 'Rajiv Menon',
+  reception: 'Front Desk',
   patient: 'Patient App',
 };
 
@@ -232,12 +241,44 @@ export interface Transition<R> {
 // Small helpers
 // -------------------------------------------------------------
 let idCounter = 0;
-export const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(idCounter++).toString(36)}`;
 
-const nowClock = () => formatClock(new Date());
+/**
+ * Identifiers the server assigned (live mode). The app saves a change to the
+ * backend first, then replays the same transition inside `withServerIds`, so the
+ * local records carry the server's ids, UHIDs and bill numbers. Outside it (demo
+ * mode) everything is generated locally as before.
+ */
+export interface ServerIds {
+  /** Keyed by id prefix: { pat: [...], inv: [...], apt: [...] }, used in order. */
+  ids?: Partial<Record<string, string[]>>;
+  uhids?: string[];
+  invoiceNos?: string[];
+}
+
+let serverIds: Required<ServerIds> = { ids: {}, uhids: [], invoiceNos: [] };
+
+export const withServerIds = <R,>(preset: ServerIds, fn: () => R): R => {
+  const previous = serverIds;
+  serverIds = {
+    ids: Object.fromEntries(Object.entries(preset.ids ?? {}).map(([k, v]) => [k, [...(v ?? [])]])),
+    uhids: [...(preset.uhids ?? [])],
+    invoiceNos: [...(preset.invoiceNos ?? [])],
+  };
+  try {
+    return fn();
+  } finally {
+    serverIds = previous;
+  }
+};
+
+export const newId = (prefix: string) => serverIds.ids[prefix]?.shift() ?? `${prefix}-${Date.now().toString(36)}${(idCounter++).toString(36)}`;
+
+const nowClock = () => formatClock(clinicNow());
 const today = () => todayISO();
-const actorOf = (s: HospitalState) =>
-  s.activeRole === 'patient' ? s.patients.find((p) => p.id === s.patientAppUserId)?.name ?? 'Patient' : ROLE_ACTOR[s.activeRole];
+/** Who is acting: audit entries, "recorded by", "prepared by". */
+export const actorOf = (s: HospitalState) =>
+  s.signedInAs ??
+  (s.activeRole === 'patient' ? s.patients.find((p) => p.id === s.patientAppUserId)?.name ?? 'Patient' : ROLE_ACTOR[s.activeRole]);
 
 const withNotification = (
   s: HospitalState,
@@ -302,11 +343,11 @@ export interface CreateInvoiceInput {
 
 export const createInvoice = (s: HospitalState, input: CreateInvoiceInput): Transition<Invoice> => {
   const patient = findPatient(s, input.patientId);
-  const now = new Date();
+  const now = clinicNow();
   const status = input.status ?? 'Paid';
   const invoice: Invoice = {
     id: newId('inv'),
-    invoiceNo: nextInvoiceNumber(s.invoices, input.type, now.getFullYear()),
+    invoiceNo: serverIds.invoiceNos.shift() ?? nextInvoiceNumber(s.invoices, input.type, now.getFullYear()),
     title: input.title,
     type: input.type,
     patientId: input.patientId,
@@ -340,7 +381,7 @@ export const createInvoice = (s: HospitalState, input: CreateInvoiceInput): Tran
 export const markInvoicePaid = (s: HospitalState, invoiceId: string, mode: PaymentMode): Transition<Invoice | null> => {
   const inv = s.invoices.find((i) => i.id === invoiceId);
   if (!inv || inv.status === 'Paid') return { state: s, result: inv ?? null };
-  const updated: Invoice = { ...inv, status: 'Paid', paymentMode: mode, paidAt: nowClock(), dateISO: today(), date: formatDisplayDate(new Date()) };
+  const updated: Invoice = { ...inv, status: 'Paid', paymentMode: mode, paidAt: nowClock(), dateISO: today(), date: formatDisplayDate(clinicNow()) };
   let next: HospitalState = { ...s, invoices: replaceById(s.invoices, invoiceId, updated) };
   next = withNotification(next, {
     title: 'Payment received',
@@ -393,10 +434,10 @@ export const registerPatient = (
   input: RegisterPatientInput
 ): Transition<{ patient: Patient; invoice: Invoice }> => {
   const dob = parseDob(input.dob);
-  const now = new Date();
+  const now = clinicNow();
   const patient: Patient = {
     id: newId('pat'),
-    uhid: nextUhid(s.patients, now.getFullYear()),
+    uhid: serverIds.uhids.shift() ?? nextUhid(s.patients, now.getFullYear()),
     name: input.name.trim(),
     age: dob ? ageFromDob(dob) : 0,
     gender: input.gender,
@@ -462,7 +503,7 @@ export const getAvailableSlots = (s: HospitalState, doctorId: string, dateISO: s
   const date = fromISODate(dateISO);
   const offDay = date ? !doctor.availableDays.includes(weekdayShort(date)) : false;
   const isToday = dateISO === today();
-  const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+  const nowMinutes = clinicNow().getHours() * 60 + clinicNow().getMinutes();
   const taken = new Set(
     s.appointments
       .filter((a) => a.doctorId === doctorId && a.date === dateISO && a.status !== 'Cancelled')
@@ -708,7 +749,7 @@ export const saveConsultation = (
     const allergy = alerts.find((a) => a.kind === 'allergy');
     review = {
       id: newId('rx'),
-      prescriptionCode: nextRxCode(next.prescriptionReviews, new Date().getFullYear()),
+      prescriptionCode: nextRxCode(next.prescriptionReviews, clinicNow().getFullYear()),
       patientId: patient.id,
       patientName: patient.name,
       uhid: patient.uhid,
@@ -1035,7 +1076,7 @@ export const dischargePatient = (s: HospitalState, patientId: string): Transitio
   if (patient.status !== 'Admitted') return { state: s, result: { ok: false, error: 'NOT_ADMITTED' } };
   const summary: DischargeSummary = {
     ...(buildDischargeSummary(s, patientId) as DischargeSummary),
-    dischargeDate: formatDisplayDate(new Date()),
+    dischargeDate: formatDisplayDate(clinicNow()),
     status: 'Final',
   };
   const ward = s.wardInfo.find((w) => w.id === patient.wardId);
@@ -1155,7 +1196,7 @@ export const orderLabTests = (
   const patient = findPatient(s, patientId);
   const tests = testIds.map((id) => s.labTests.find((t) => t.id === id)).filter(Boolean) as LabTest[];
   if (!patient || !tests.length) return { state: s, result: null };
-  const year = new Date().getFullYear();
+  const year = clinicNow().getFullYear();
   let samples: LabSample[] = [];
   let code = nextSampleCode(s.labSamples, year);
   tests.forEach((t) => {
@@ -1608,7 +1649,7 @@ export const raiseIndent = (s: HospitalState, supplyId: string, qty: number): Tr
 export const receiveIndent = (s: HospitalState, supplyId: string): Transition<SupplyItem | null> => {
   const item = s.supplies.find((x) => x.id === supplyId);
   if (!item || !item.onOrder) return { state: s, result: item ?? null };
-  const updated: SupplyItem = { ...item, stock: item.stock + item.onOrder, onOrder: undefined, lastRestocked: formatDisplayDate(new Date()) };
+  const updated: SupplyItem = { ...item, stock: item.stock + item.onOrder, onOrder: undefined, lastRestocked: formatDisplayDate(clinicNow()) };
   let next: HospitalState = { ...s, supplies: replaceById(s.supplies, supplyId, updated) };
   next = withAudit(next, `Received ${item.onOrder} ${item.unit} into store`, item.name);
   return { state: next, result: updated };
@@ -1683,21 +1724,22 @@ export const bedSummary = (s: HospitalState) => {
 export const todayStatsFor = (s: HospitalState) => {
   const t = today();
   const beds = bedSummary(s);
-  const opdToday = MD.OPD_TODAY_BASE + s.appointments.filter((a) => a.date === t && a.type !== 'IPD' && a.status !== 'Cancelled').length;
-  const admissionsToday = 18 + s.patients.filter((p) => p.status === 'Admitted' && p.admittedOn === t).length;
+  const base = (demo: number) => (s.live ? 0 : demo);
+  const opdToday = base(MD.OPD_TODAY_BASE) + s.appointments.filter((a) => a.date === t && a.type !== 'IPD' && a.status !== 'Cancelled').length;
+  const admissionsToday = base(18) + s.patients.filter((p) => p.status === 'Admitted' && p.admittedOn === t).length;
   const dischargesToday = s.patients.filter((p) => p.dischargedOn === t).length;
   return {
-    totalPatients: MD.PATIENT_REGISTRY_BASE + s.patients.length,
+    totalPatients: base(MD.PATIENT_REGISTRY_BASE) + s.patients.length,
     opdToday,
     ipdOccupancy: beds.pct,
-    surgeriesToday: MD.SURGERIES_TODAY,
-    todayCollection: MD.TODAY_COLLECTION_BASE + paidOnDate(s.invoices, t),
+    surgeriesToday: base(MD.SURGERIES_TODAY),
+    todayCollection: base(MD.TODAY_COLLECTION_BASE) + paidOnDate(s.invoices, t),
     bedsOccupied: beds.occupied,
     bedsTotal: beds.total,
     admissionsToday,
-    dischargesToday: 6 + dischargesToday,
-    emergencyToday: MD.EMERGENCY_TODAY,
-    footfallToday: opdToday + MD.EMERGENCY_TODAY + beds.occupied,
+    dischargesToday: base(6) + dischargesToday,
+    emergencyToday: base(MD.EMERGENCY_TODAY),
+    footfallToday: opdToday + base(MD.EMERGENCY_TODAY) + beds.occupied,
     pendingAmount: s.invoices.filter((i) => i.status === 'Pending').reduce((n, i) => n + i.amount, 0),
     pendingCount: s.invoices.filter((i) => i.status === 'Pending').length,
   };
@@ -1706,7 +1748,7 @@ export const todayStatsFor = (s: HospitalState) => {
 export const labPipelineCounts = (s: HospitalState) => {
   const t = today();
   const todays = s.labSamples.filter((x) => x.date === t);
-  const count = (status: LabSample['status']) => MD.LAB_PIPELINE_BASE[status] + todays.filter((x) => x.status === status).length;
+  const count = (status: LabSample['status']) => (s.live ? 0 : MD.LAB_PIPELINE_BASE[status]) + todays.filter((x) => x.status === status).length;
   return { New: count('New'), Processing: count('Processing'), Completed: count('Completed'), Abnormal: count('Abnormal') };
 };
 

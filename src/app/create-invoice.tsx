@@ -261,7 +261,7 @@ export default function CreateInvoiceRoute() {
     if (typeof y === 'number') scrollRef.current?.scrollTo({ y: Math.max(0, y - spacing.md), animated: true });
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (submitting || createdId) return;
     if (errorCount > 0 || !patient) {
       setShowErrors(true);
@@ -284,7 +284,7 @@ export default function CreateInvoiceRoute() {
       items.push({ description: `Less: Insurance approved (${insurerName(patient.insurance)})`, qty: 1, rate: -insurance, amount: -insurance });
     }
     const status: Invoice['status'] = collectNow ? 'Paid' : 'Pending';
-    const invoice = createInvoice({
+    const invoice = await createInvoice({
       type,
       patientId: patient.id,
       title: title.trim() || titleFor(type),
@@ -295,6 +295,11 @@ export default function CreateInvoiceRoute() {
       doctorName,
       insuranceCovered: insurance > 0 ? insurance : undefined,
     });
+    // Null: the server refused it and the user has been told why.
+    if (!invoice) {
+      setSubmitting(false);
+      return;
+    }
     showToast({
       type: 'success',
       title: status === 'Paid' ? 'Payment collected' : 'Bill saved as pending',

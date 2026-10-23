@@ -12,12 +12,12 @@ import { FadeInView, PressableScale, stagger } from '../components/common/Motion
 import { FINANCE_TEMPLATES, type FinanceTemplate } from '../components/finance/templates';
 import { invoicesForTemplate } from '../components/finance/templateSamples';
 import { INVOICE_TYPE_META, INVOICE_TYPE_ORDER } from '../components/finance/invoiceUtils';
-import { relativeDayLabel } from '../utils/dates';
+import { relativeDayLabel, clinicNow } from '../utils/dates';
 
 export default function ReceiptTemplatesRoute() {
   const { invoices, dischargeSummaries } = useApp();
   const insets = useSafeAreaInsets();
-  const year = new Date().getFullYear();
+  const year = clinicNow().getFullYear();
 
   const usage = useMemo(() => {
     const map: Record<string, string> = {};

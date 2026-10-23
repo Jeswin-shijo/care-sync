@@ -13,19 +13,23 @@ import { BranchesSection } from '../../components/shell/settings/BranchesSection
 import { LanguageSection } from '../../components/shell/settings/LanguageSection';
 import { NotificationsSection } from '../../components/shell/settings/NotificationsSection';
 import { SecuritySection } from '../../components/shell/settings/SecuritySection';
+import { PreviewScope } from '../../components/common/PreviewScope';
+import { useSession } from '../../context/SessionContext';
 
-const SECTIONS: Record<string, { title: string; subtitle: string; Component: React.FC }> = {
+/** `sample`: not on the backend yet; a signed-in account sees the sample hospital's. */
+const SECTIONS: Record<string, { title: string; subtitle: string; Component: React.FC; sample?: boolean }> = {
   'hospital-profile': { title: 'Hospital Profile', subtitle: 'Name, address, GST & registration', Component: HospitalProfileSection },
   billing: { title: 'Billing Settings', subtitle: 'Tax, payment modes & receipts', Component: BillingSection },
-  departments: { title: 'Departments', subtitle: 'Services, heads & doctors', Component: DepartmentsSection },
-  'users-roles': { title: 'Users & Roles', subtitle: 'Staff access & permissions', Component: UsersRolesSection },
-  branches: { title: 'Branches', subtitle: 'Multi-branch management', Component: BranchesSection },
+  departments: { title: 'Departments', subtitle: 'Services, heads & doctors', Component: DepartmentsSection, sample: true },
+  'users-roles': { title: 'Users & Roles', subtitle: 'Staff access & permissions', Component: UsersRolesSection, sample: true },
+  branches: { title: 'Branches', subtitle: 'Multi-branch management', Component: BranchesSection, sample: true },
   language: { title: 'Language', subtitle: 'App display language', Component: LanguageSection },
   notifications: { title: 'Notifications', subtitle: 'Alerts, SMS, WhatsApp & email', Component: NotificationsSection },
-  security: { title: 'Security & Compliance', subtitle: 'RBAC, audit log & data protection', Component: SecuritySection },
+  security: { title: 'Security & Compliance', subtitle: 'RBAC, audit log & data protection', Component: SecuritySection, sample: true },
 };
 
 export default function SettingsSectionRoute() {
+  const { status } = useSession();
   const params = useLocalSearchParams<{ section?: string | string[] }>();
   const key = Array.isArray(params.section) ? params.section[0] : params.section;
   const section = key ? SECTIONS[key] : undefined;
@@ -47,12 +51,13 @@ export default function SettingsSectionRoute() {
   }
 
   const { Component } = section;
-  return (
+  const body = (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>
       <Header title={section.title} subtitle={section.subtitle} showBack />
       <Component />
     </SafeAreaView>
   );
+  return section.sample && status === 'live' ? <PreviewScope>{body}</PreviewScope> : body;
 }
 
 const styles = StyleSheet.create({

@@ -28,6 +28,7 @@ import { RoleLockScreen } from '../components/orders/RoleLock';
 import { canAccess } from '../logic/access';
 import { formatCurrency } from '../utils/formatters';
 import { monthsUntilExpiry } from '../utils/dates';
+import { withPreview } from '../components/common/PreviewScope';
 
 type StockTab = 'All' | 'In Stock' | 'Low Stock' | 'Expiring';
 const TABS: StockTab[] = ['All', 'In Stock', 'Low Stock', 'Expiring'];
@@ -58,7 +59,7 @@ const inTab = (m: Medicine, tab: StockTab) => {
   }
 };
 
-export default function PharmacyRoute() {
+function PharmacyRoute() {
   const params = useLocalSearchParams<{ patientId?: string }>();
   const { activeRole, medicines, cart, addToCart, decrementCartItem, removeFromCart, getPatient, checkDrugsForPatient } = useApp();
   const { showToast } = useToast();
@@ -344,3 +345,6 @@ const styles = StyleSheet.create({
   right: { alignItems: 'flex-end', justifyContent: 'space-between' },
   price: { fontSize: typography.fontSizes.sm + 1, fontWeight: typography.fontWeights.bold, color: colors.text },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(PharmacyRoute, { module: 'pharmacy', title: 'Pharmacy', purpose: 'Dispensing and billing medicines' });

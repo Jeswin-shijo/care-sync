@@ -1,9 +1,13 @@
 import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useApp } from '../../context/AppContext';
+import { useSession } from '../../context/SessionContext';
+import { useAlert } from '../../context/AlertContext';
+import { ROLE_LABEL } from '../../logic/access';
+import { Avatar } from '../../components/common/Avatar';
 import { LOW_STOCK_THRESHOLD } from '../../data/mockData';
 import { colors, radius, shadows, spacing, typography } from '../../constants/theme';
 import { Header } from '../../components/common/Header';
@@ -28,6 +32,10 @@ interface Tile {
 
 const push = (route: string) => () => router.push(route as any);
 
+/** Modules not on the backend yet: a signed-in account opens them on sample data. */
+const PREVIEW_TILES = new Set(['pharmacy', 'laboratory', 'radiology', 'blood-bank', 'ambulance', 'bed-management', 'inventory', 'ipd', 'discharge', 'finance']);
+const PREVIEW_BADGE: TileBadge = { label: 'Preview', tone: 'neutral' };
+
 export default function MoreRoute() {
   const {
     medicines,
@@ -38,7 +46,30 @@ export default function MoreRoute() {
     bedSummary,
     supplies,
     todayStats,
+    dataMode,
+    activeRole,
+    actorName,
+    hospitalProfile,
   } = useApp();
+  const { status, user, signOut } = useSession();
+  const { showAlert } = useAlert();
+  const live = dataMode === 'live';
+  // Counts on preview tiles would come from the sample hospital; say "Preview" instead.
+  const tileBadge = (tile: Tile) => (live && PREVIEW_TILES.has(tile.id) ? PREVIEW_BADGE : tile.badge);
+
+  const confirmSignOut = () =>
+    showAlert({
+      title: status === 'demo' ? 'Leave the offline demo?' : 'Sign out?',
+      message:
+        status === 'demo'
+          ? 'Changes you made to the sample hospital are discarded.'
+          : 'Patient records are removed from this device until you sign in again.',
+      type: 'warning',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: status === 'demo' ? 'Leave demo' : 'Sign out', style: 'destructive', onPress: () => signOut() },
+      ],
+    });
 
   const t = todayISO();
   const lowStock = medicines.filter((m) => m.stock <= LOW_STOCK_THRESHOLD).length;
@@ -205,9 +236,31 @@ export default function MoreRoute() {
       <Header title="More Features" subtitle="Hospital services & modules" showBack={false} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Who is signed in */}
+        <FadeInView style={styles.account}>
+          <Avatar name={live ? actorName : 'Offline demo'} size={46} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.accountName} numberOfLines={1}>
+              {live ? actorName : 'Offline demo'}
+            </Text>
+            <Text style={styles.accountMeta} numberOfLines={1}>
+              {live ? [ROLE_LABEL[activeRole], user?.email].filter(Boolean).join(' • ') : 'Sample hospital on this device • nothing is saved'}
+            </Text>
+          </View>
+          <Pressable
+            onPress={confirmSignOut}
+            style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.7 }]}
+            accessibilityRole="button"
+            accessibilityLabel={live ? 'Sign out' : 'Leave the offline demo'}
+          >
+            <Ionicons name="log-out-outline" size={17} color={colors.danger} />
+            <Text style={styles.signOutText}>{live ? 'Sign out' : 'Exit'}</Text>
+          </Pressable>
+        </FadeInView>
+
         {/* Core Hospital Modules Grid */}
         <FadeInView delay={stagger(1, 80)}>
-          <SectionHeader title="Hospital Services" meta="All features accessible" />
+          <SectionHeader title="Hospital Services" meta={live ? 'Preview = sample data' : 'All features accessible'} />
           <View style={styles.gridCard}>
             {mainModules.map((tile) => (
               <ModuleTile
@@ -216,7 +269,7 @@ export default function MoreRoute() {
                 icon={tile.icon}
                 color={tile.color}
                 bg={tile.bg}
-                badge={tile.badge}
+                badge={tileBadge(tile)}
                 onPress={tile.open}
               />
             ))}
@@ -234,7 +287,7 @@ export default function MoreRoute() {
                 icon={tile.icon}
                 color={tile.color}
                 bg={tile.bg}
-                badge={tile.badge}
+                badge={tileBadge(tile)}
                 onPress={tile.open}
               />
             ))}
@@ -242,7 +295,7 @@ export default function MoreRoute() {
         </FadeInView>
 
         <Text style={styles.footnote}>
-          CareSync Hospital Suite • All departmental modules active
+          {live ? `Connected to ${hospitalProfile.name} • Preview modules use sample data` : 'CareSync Hospital Suite • Offline demo on sample data'}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -269,6 +322,30 @@ const styles = StyleSheet.create({
     borderColor: colors.borderLight,
     ...shadows.sm,
   },
+  account: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.sm,
+  },
+  accountName: { fontSize: typography.fontSizes.md, fontWeight: typography.fontWeights.bold, color: colors.text },
+  accountMeta: { fontSize: typography.fontSizes.xs + 1, color: colors.textSecondary, marginTop: 2 },
+  signOut: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.dangerLight,
+  },
+  signOutText: { fontSize: typography.fontSizes.sm, fontWeight: typography.fontWeights.semiBold, color: colors.danger },
   footnote: {
     marginTop: spacing.xl,
     textAlign: 'center',

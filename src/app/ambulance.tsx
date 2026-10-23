@@ -18,10 +18,11 @@ import { DispatchSheet } from '../components/operations/DispatchSheet';
 import { STATUS_ORDER } from '../components/operations/ambulance';
 import { KpiRow } from '../components/operations/OpsUI';
 import { afterModal, callNumber, plural } from '../components/operations/utils';
+import { withPreview } from '../components/common/PreviewScope';
 
 const HOTLINE = '108';
 
-export default function AmbulanceRoute() {
+function AmbulanceRoute() {
   const { ambulances, completeAmbulanceTrip, setAmbulanceMaintenance, hospitalProfile } = useApp();
   const { showToast } = useToast();
   const barSpace = useBottomBarSpace();
@@ -271,3 +272,6 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 });
+
+// Not on the MediOS backend yet: a signed-in account sees it on sample data.
+export default withPreview(AmbulanceRoute, { module: 'ambulance', title: 'Ambulance', purpose: 'Ambulance dispatch' });

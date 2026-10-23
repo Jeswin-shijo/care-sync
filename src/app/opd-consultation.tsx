@@ -254,13 +254,13 @@ function OpdConsultationScreen() {
   };
 
   // ---------------------------------------------------------------- save
-  const commit = () => {
+  const commit = async () => {
     if (savingRef.current || !patient) return;
     savingRef.current = true;
     setSaving(true);
-    setTimeout(() => {
+    {
       try {
-        const res = app.saveConsultation({
+        const res = await app.saveConsultation({
           patientId: patient.id,
           appointmentId: linkedAppointment?.id,
           doctorName: doctor.name,
@@ -273,11 +273,20 @@ function OpdConsultationScreen() {
           followUpDate: followUpPlan?.time ? followUpPlan.iso : undefined,
           source: usedAi ? 'AI draft (reviewed by doctor)' : undefined,
         });
+        // Null: the server refused it and the doctor has been told why; the notes stay on screen.
+        if (!res) {
+          savingRef.current = false;
+          setSaving(false);
+          return;
+        }
         savedAptRef.current = linkedAppointment;
         setSavedState(true);
         setSaving(false);
         const bullets: string[] = [];
-        if (res.review) {
+        if (res.review && app.dataMode === 'live') {
+          // The pharmacy queue is not on the server yet; the prescription itself is saved.
+          bullets.push(`• Prescription saved (${res.review.drugs.length} medicine${res.review.drugs.length > 1 ? 's' : ''})`);
+        } else if (res.review) {
           bullets.push(
             `• ${res.review.prescriptionCode} sent to pharmacy — ${
               res.review.safetyStatus === 'Safe' ? 'safety check passed' : `flagged: ${res.review.safetyStatus}`
@@ -311,7 +320,7 @@ function OpdConsultationScreen() {
         setSaving(false);
         Alert.alert('Save Failed', err?.message ?? 'Please try again.');
       }
-    }, 400);
+    }
   };
 
   const save = () => {

@@ -25,6 +25,7 @@ import {
 } from '../../components/finance/invoiceUtils';
 import { formatCompactCurrency, formatCurrency } from '../../utils/formatters';
 import { clockToMinutes, relativeDayLabel } from '../../utils/dates';
+import { useLiveRefreshControl } from '../../components/common/useLiveRefresh';
 
 type Row =
   | { kind: 'day'; key: string; title: string; count: number; collected: number; due: number }
@@ -34,6 +35,7 @@ const sortStamp = (inv: Invoice) => `${inv.dateISO ?? ''}|${String(clockToMinute
 
 export default function BillingRoute() {
   const { invoices, todayStats, getRevenue } = useApp();
+  const liveRefresh = useLiveRefreshControl();
   const params = useLocalSearchParams<{ filter?: string }>();
   const navigation = useNavigation();
   const listRef = useRef<FlatList<Row>>(null);
@@ -282,6 +284,7 @@ export default function BillingRoute() {
         <FilterChips items={chips} active={filter} onChange={(k) => setFilter(k as BillingFilterKey)} style={styles.chips} />
 
         <FlatList
+          refreshControl={liveRefresh}
           ref={listRef}
           data={rows}
           keyExtractor={(r) => r.key}

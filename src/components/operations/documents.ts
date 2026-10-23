@@ -9,7 +9,7 @@ import type { IconName } from './OpsUI';
 
 export type DocType = PatientDocument['type'];
 
-export const DOC_TYPES: DocType[] = ['Consent', 'ID Proof', 'Insurance', 'Lab Report', 'Discharge', 'Imaging'];
+export const DOC_TYPES: DocType[] = ['Consent', 'ID Proof', 'Insurance', 'Lab Report', 'Discharge', 'Imaging', 'Referral', 'Certificate', 'Prescription'];
 
 export const DOC_TYPE_META: Record<DocType, { icon: IconName; color: string; bg: string; description: string }> = {
   Consent: { icon: 'create-outline', color: colors.purple, bg: colors.purpleLight, description: 'Signed treatment / procedure consent' },
@@ -18,6 +18,9 @@ export const DOC_TYPE_META: Record<DocType, { icon: IconName; color: string; bg:
   'Lab Report': { icon: 'flask-outline', color: colors.rose, bg: colors.roseLight, description: 'Pathology & biochemistry' },
   Discharge: { icon: 'exit-outline', color: colors.orange, bg: colors.orangeLight, description: 'Discharge summary' },
   Imaging: { icon: 'scan-outline', color: colors.info, bg: colors.infoLight, description: 'X-ray, CT, MRI, ultrasound' },
+  Referral: { icon: 'paper-plane-outline', color: colors.teal, bg: colors.tealLight, description: 'Referral to or from another doctor' },
+  Certificate: { icon: 'ribbon-outline', color: colors.purple, bg: colors.purpleLight, description: 'Fitness, sick leave, medical certificate' },
+  Prescription: { icon: 'document-text-outline', color: colors.primary, bg: colors.primaryLight, description: 'Prescription or bill copy' },
 };
 
 export const TITLE_SUGGESTIONS: Record<DocType, string[]> = {
@@ -25,8 +28,11 @@ export const TITLE_SUGGESTIONS: Record<DocType, string[]> = {
   'ID Proof': ['Aadhaar Card', 'PAN Card', 'Passport', 'Voter ID'],
   Insurance: ['Insurance Card', 'Pre-authorization', 'Claim Form', 'TPA Approval Letter'],
   'Lab Report': ['CBC Report', 'LFT Report', 'HbA1c Report', 'Outside Lab Report'],
-  Discharge: ['Discharge Summary', 'Referral Letter'],
+  Discharge: ['Discharge Summary'],
   Imaging: ['Chest X-Ray Report', 'CT Scan Report', 'MRI Report', 'Ultrasound Report'],
+  Referral: ['Referral Letter', 'Specialist Opinion'],
+  Certificate: ['Medical Certificate', 'Fitness Certificate', 'Sick Leave Certificate'],
+  Prescription: ['Prescription Copy', 'Pharmacy Bill'],
 };
 
 const SIZE_RANGE_KB: Record<DocType, [number, number]> = {
@@ -36,6 +42,9 @@ const SIZE_RANGE_KB: Record<DocType, [number, number]> = {
   'Lab Report': [140, 420],
   Discharge: [240, 380],
   Imaging: [1600, 3800],
+  Referral: [120, 300],
+  Certificate: [100, 260],
+  Prescription: [90, 240],
 };
 
 /** Plausible file size for a scanned document of this type ("420 KB", "2.4 MB"). */

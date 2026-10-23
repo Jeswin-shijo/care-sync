@@ -15,6 +15,7 @@ import { FadeInView, PressableScale, stagger } from '../../components/common/Mot
 import { formScrollProps, KeyboardAwareContainer, useKeyboardHeight } from '../../components/common/KeyboardAware';
 import { ChoiceChips } from '../../components/clinical/ChoiceChips';
 import { digitsOnly, friendlyDate, stayDay } from '../../components/clinical/format';
+import { useLiveRefreshControl } from '../../components/common/useLiveRefresh';
 
 type StatusFilter = 'All' | Patient['status'];
 const FILTERS: StatusFilter[] = ['All', 'Active', 'Admitted', 'Discharged'];
@@ -23,6 +24,7 @@ const openRegister = () => router.push('/register-patient');
 
 export default function PatientsRoute() {
   const { patients, clinicalProfiles, setSelectedPatientId } = useApp();
+  const liveRefresh = useLiveRefreshControl();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<StatusFilter>('All');
   const keyboardOpen = useKeyboardHeight() > 0;
@@ -152,6 +154,7 @@ export default function PatientsRoute() {
           onChange={setFilter}
         />
         <FlatList
+          refreshControl={liveRefresh}
           data={visible}
           keyExtractor={(p) => p.id}
           renderItem={renderItem}

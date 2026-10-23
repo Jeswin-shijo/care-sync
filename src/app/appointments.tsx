@@ -34,6 +34,7 @@ import {
   todayISO,
   weekdayShort,
 } from '../utils/dates';
+import { useLiveRefreshControl } from '../components/common/useLiveRefresh';
 
 type TypeTab = 'All' | Appointment['type'];
 const TYPE_TABS: TypeTab[] = ['All', 'OPD', 'IPD', 'Follow Up'];
@@ -142,6 +143,7 @@ const patientActionsFor = (apt: Appointment, dayOffset: number): SheetAction[] =
 export default function AppointmentsRoute() {
   const params = useLocalSearchParams<{ date?: string }>();
   const { appointments: allAppointments, patients, updateAppointmentStatus, activeRole, patientAppUserId } = useApp();
+  const liveRefresh = useLiveRefreshControl();
   // Patient app: only the signed-in patient's own visits, never the hospital schedule.
   const patientView = activeRole === 'patient';
   const appointments = useMemo(
@@ -518,6 +520,7 @@ export default function AppointmentsRoute() {
 
       <KeyboardAwareContainer>
         <FlatList
+          refreshControl={liveRefresh}
           data={rows}
           keyExtractor={(r) => (r.kind === 'now' ? r.key : r.apt.id)}
           renderItem={renderRow}

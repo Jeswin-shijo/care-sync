@@ -16,7 +16,7 @@ import { PatientPicker } from '../components/common/PatientPicker';
 import { EmptyState } from '../components/common/EmptyState';
 import { FadeInView } from '../components/common/Motion';
 import { formScrollProps, KeyboardAwareContainer, useKeyboardHeight } from '../components/common/KeyboardAware';
-import { formatClock, formatDayMonth, greetingForNow, todayISO, weekdayShort } from '../utils/dates';
+import { formatClock, formatDayMonth, greetingForNow, todayISO, weekdayShort, clinicNow } from '../utils/dates';
 import { openRoute } from '../utils/navigation';
 import {
   analysisLabel,
@@ -58,7 +58,6 @@ import { AuditSheet } from '../components/ai/copilot/AuditSheet';
 import { GuardrailsBanner } from '../components/ai/copilot/GuardrailsBanner';
 import { AskBar, AskBarHandle } from '../components/ai/copilot/AskBar';
 
-const DOCTOR = 'Dr. Priya Menon';
 
 const PANEL_META: Record<CopilotTab, { icon: keyof typeof Ionicons.glyphMap; color: string; title: string; subtitle: string }> = {
   Summarize: { icon: 'document-text', color: colors.primary, title: 'Patient History Summary', subtitle: 'Complete medical timeline in seconds' },
@@ -122,7 +121,11 @@ export default function DoctorCopilotRoute() {
     orderLabTests,
     orderRadiologyScans,
     applySaferAlternative,
+    actorName,
+    doctors,
   } = useApp();
+  // The copilot works for a doctor: the signed-in one, else (an admin looking in) the hospital's.
+  const DOCTOR = activeRole === 'doctor' ? actorName : (doctors[0]?.name ?? actorName);
 
   const todays = useMemo(
     () => todaysPatientsFor(DOCTOR, { patients, appointments, labSamples, radiologyOrders }),
@@ -172,6 +175,13 @@ export default function DoctorCopilotRoute() {
   }, []);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   // The copilot is the doctor portal.
   // Re-asserted on every focus, so returning to this portal restores its role.
@@ -454,16 +464,18 @@ export default function DoctorCopilotRoute() {
     const source = draft.origin;
     const name = patient.name;
     setSaving(true);
-    later(() => {
-      const note = saveClinicalNote(target, content, source, DOCTOR);
+    saveClinicalNote(target, content, source, DOCTOR).then((note) => {
+      if (!mounted.current) return;
+      setSaving(false);
+      // Null: the server refused it and the user has been told why; the draft stays open.
+      if (!note) return;
       setDrafts((prev) => ({
         ...prev,
         [target]: { ...(prev[target] ?? { note: draft.note, origin: source, edited: false }), savedNoteId: note.id, savedAt: `Today, ${note.time}` },
       }));
-      setSaving(false);
       setApproveOpen(false);
       showToast({ type: 'success', title: 'Note saved to EMR', message: `${name} • approved by ${DOCTOR} at ${note.time}` });
-    }, 450);
+    });
   };
 
   // -------------------------------------------------------------- insights
@@ -726,7 +738,7 @@ export default function DoctorCopilotRoute() {
   );
 
   const meta = PANEL_META[tab];
-  const now = new Date();
+  const now = clinicNow();
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.safeArea}>

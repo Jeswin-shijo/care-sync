@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { clockToMinutes, daysFromToday, relativeDayLabel } from '../../utils/dates';
+import { clockToMinutes, daysFromToday, relativeDayLabel, clinicNow } from '../../utils/dates';
 
 /** Current time, refreshed on an interval so "overdue" / "3h ago" labels stay live. */
 export const useNow = (intervalMs = 30000): Date => {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState(() => clinicNow());
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), intervalMs);
+    const id = setInterval(() => setNow(clinicNow()), intervalMs);
     return () => clearInterval(id);
   }, [intervalMs]);
   return now;
