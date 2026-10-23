@@ -1,17 +1,18 @@
 /**
- * CareSync brand mark — single source of truth.
+ * MediOS brand mark — single source of truth for the mobile and web icons.
  *
- * A rounded medical cross (care) with a heartbeat line (monitoring), wrapped in
- * a circular sync arrow (CareSync) whose gap holds a sparkle (MediOS AI).
- * `scripts/generate-icons.js` renders the app icons from this; the PDF
- * generator embeds it in receipt headers.
+ * A soft medical cross (care) on a deep blue tile, crossed by a heartbeat trace
+ * whose two peaks draw an "M" (MediOS). Plain shapes, so it stays legible from
+ * the 1024px store icon down to a 16px browser tab (the `small` variant thickens
+ * the trace for those sizes). `scripts/generate-icons.js` renders every app and
+ * web icon from this; the PDF generator embeds it in receipt headers.
  */
 
 export const BRAND = {
-  primary: '#1E6BFF',
-  gradientStart: '#4C93FF',
-  gradientEnd: '#0A3FB4',
-  sparkle: '#9BE7FF',
+  primary: '#1E62F5',
+  gradientStart: '#4D8DFF',
+  gradientEnd: '#0B36A8',
+  pulse: '#1A56E8',
 };
 
 export interface LogoOptions {
@@ -21,26 +22,24 @@ export interface LogoOptions {
   background?: boolean;
   /** Tile corner radius on the 1024 grid (0 = square, e.g. iOS icon). */
   cornerRadius?: number;
-  /** Scale of the mark around the centre (Android foreground needs ~0.84). */
+  /** Scale of the mark around the centre (Android's adaptive foreground). */
   markScale?: number;
-  /** Single-colour white mark with the heartbeat cut out (Android themed icon). */
+  /** Single-colour white mark with the trace cut out (Android themed icon). */
   monochrome?: boolean;
-  /** Soft drop shadow under the mark. */
+  /** Soft drop shadow under the cross. */
   shadow?: boolean;
   /** Draw the mark (false = background tile only, e.g. Android background layer). */
   mark?: boolean;
+  /** `small`: a heavier trace for 16–48px (favicons, tab icons). */
+  variant?: 'full' | 'small';
 }
 
 const C = 512;
 const r1 = (n: number) => Math.round(n * 10) / 10;
-const polar = (radius: number, deg: number): [number, number] => {
-  const t = (deg * Math.PI) / 180;
-  return [C + radius * Math.cos(t), C + radius * Math.sin(t)];
-};
 
 /** Plus sign with rounded outer corners and filleted inner corners. */
-const crossPath = (a = 232, b = 82, ro = 48, ri = 20) => {
-  const v: Array<[number, number, boolean]> = [
+const crossPath = (a = 300, b = 130, ro = 80, ri = 34) => {
+  const v: [number, number, boolean][] = [
     [-b, -a, true], [b, -a, true], [b, -b, false], [a, -b, true], [a, b, true], [b, b, false],
     [b, a, true], [-b, a, true], [-b, b, false], [-a, b, true], [-a, -b, true], [-b, -b, false],
   ];
@@ -62,39 +61,16 @@ const crossPath = (a = 232, b = 82, ro = 48, ri = 20) => {
   return `${d}Z`;
 };
 
-const PULSE: Array<[number, number]> = [
-  [-188, 6], [-96, 6], [-66, -38], [-31, 55], [8, -68], [42, 32], [70, 6], [188, 6],
-];
-const pulsePoints = () => PULSE.map(([x, y]) => `${C + x},${C + y}`).join(' ');
+/**
+ * The heartbeat: flat lead-in, two peaks with a shallow dip between them (the
+ * "M"), flat lead-out. The peaks rise into the cross's vertical arm.
+ */
+const TRACE = {
+  full: { width: 52, points: [[-226, 42], [-148, 42], [-84, -104], [0, 24], [84, -104], [148, 42], [226, 42]] },
+  small: { width: 100, points: [[-196, 50], [-128, 50], [-70, -88], [0, 22], [70, -88], [128, 50], [196, 50]] },
+} as const;
 
-const RING_R = 330;
-const RING_W = 56;
-const ARC_START = 20;
-const ARC_END = 290;
-
-const ringPath = () => {
-  const [sx, sy] = polar(RING_R, ARC_START);
-  const [ex, ey] = polar(RING_R, ARC_END);
-  return `M${r1(sx)} ${r1(sy)} A${RING_R} ${RING_R} 0 1 1 ${r1(ex)} ${r1(ey)}`;
-};
-
-/** Arrowhead at the end of the sync arc, pointing clockwise. */
-const arrowPath = () => {
-  const t = (ARC_END * Math.PI) / 180;
-  const [px, py] = polar(RING_R, ARC_END);
-  const dir: [number, number] = [-Math.sin(t), Math.cos(t)];
-  const nrm: [number, number] = [Math.cos(t), Math.sin(t)];
-  const tip = [px + dir[0] * 64, py + dir[1] * 64];
-  const b1 = [px - dir[0] * 16 + nrm[0] * 60, py - dir[1] * 16 + nrm[1] * 60];
-  const b2 = [px - dir[0] * 16 - nrm[0] * 60, py - dir[1] * 16 - nrm[1] * 60];
-  return `M${r1(tip[0])} ${r1(tip[1])} L${r1(b1[0])} ${r1(b1[1])} L${r1(b2[0])} ${r1(b2[1])} Z`;
-};
-
-/** Four-point sparkle sitting in the gap of the sync ring. */
-const sparklePath = (cx: number, cy: number, r: number) => {
-  const k = r * 0.17;
-  return `M${r1(cx)} ${r1(cy - r)} Q${r1(cx + k)} ${r1(cy - k)} ${r1(cx + r)} ${r1(cy)} Q${r1(cx + k)} ${r1(cy + k)} ${r1(cx)} ${r1(cy + r)} Q${r1(cx - k)} ${r1(cy + k)} ${r1(cx - r)} ${r1(cy)} Q${r1(cx - k)} ${r1(cy - k)} ${r1(cx)} ${r1(cy - r)} Z`;
-};
+const tracePoints = (variant: 'full' | 'small') => TRACE[variant].points.map(([x, y]) => `${C + x},${C + y}`).join(' ');
 
 export const buildLogoSvg = ({
   size = 1024,
@@ -104,46 +80,38 @@ export const buildLogoSvg = ({
   monochrome = false,
   shadow = true,
   mark: drawMark = true,
+  variant = 'full',
 }: LogoOptions = {}): string => {
-  const [sx, sy] = polar(RING_R, 335);
-  const markFill = '#FFFFFF';
-  const sparkleFill = monochrome ? '#FFFFFF' : BRAND.sparkle;
+  const trace = TRACE[variant];
   const transform = markScale === 1 ? '' : ` transform="translate(${r1(C * (1 - markScale))} ${r1(C * (1 - markScale))}) scale(${markScale})"`;
+  const line = (stroke: string) =>
+    `<polyline points="${tracePoints(variant)}" fill="none" stroke="${stroke}" stroke-width="${trace.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
 
   const defs = `
-    <linearGradient id="cs-bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="mo-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="${BRAND.gradientStart}"/>
-      <stop offset="0.55" stop-color="${BRAND.primary}"/>
+      <stop offset="0.5" stop-color="${BRAND.primary}"/>
       <stop offset="1" stop-color="${BRAND.gradientEnd}"/>
     </linearGradient>
-    <radialGradient id="cs-glow" cx="0.28" cy="0.2" r="0.6">
-      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.26"/>
+    <radialGradient id="mo-glow" cx="0.25" cy="0.15" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
       <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
-    <filter id="cs-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#06245F" flood-opacity="0.32"/>
+    <filter id="mo-shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#041A55" flood-opacity="0.35"/>
     </filter>
-    <mask id="cs-pulse-cut">
+    <mask id="mo-trace-cut">
       <rect width="1024" height="1024" fill="#FFFFFF"/>
-      <polyline points="${pulsePoints()}" fill="none" stroke="#000000" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+      ${line('#000000')}
     </mask>`;
 
   const tile = background
-    ? `<rect width="1024" height="1024" rx="${cornerRadius}" fill="url(#cs-bg)"/><rect width="1024" height="1024" rx="${cornerRadius}" fill="url(#cs-glow)"/>`
+    ? `<rect width="1024" height="1024" rx="${cornerRadius}" fill="url(#mo-bg)"/><rect width="1024" height="1024" rx="${cornerRadius}" fill="url(#mo-glow)"/>`
     : '';
 
-  const cross = monochrome
-    ? `<path d="${crossPath()}" fill="${markFill}" mask="url(#cs-pulse-cut)"/>`
-    : `<path d="${crossPath()}" fill="${markFill}"/><polyline points="${pulsePoints()}" fill="none" stroke="${BRAND.primary}" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const markSvg = monochrome
+    ? `<path d="${crossPath()}" fill="#FFFFFF" mask="url(#mo-trace-cut)"/>`
+    : `<path d="${crossPath()}" fill="#FFFFFF"${shadow ? ' filter="url(#mo-shadow)"' : ''}/>${line(BRAND.pulse)}`;
 
-  const mark = `
-    <g${shadow && !monochrome ? ' filter="url(#cs-shadow)"' : ''}>
-      <path d="${ringPath()}" fill="none" stroke="${markFill}" stroke-width="${RING_W}" stroke-linecap="round" opacity="${monochrome ? 1 : 0.96}"/>
-      <path d="${arrowPath()}" fill="${markFill}" stroke="${markFill}" stroke-width="12" stroke-linejoin="round"/>
-      ${cross}
-      <path d="${sparklePath(sx, sy, 66)}" fill="${sparkleFill}"/>
-      <circle cx="${r1(sx - 78)}" cy="${r1(sy - 44)}" r="12" fill="${sparkleFill}" opacity="0.9"/>
-    </g>`;
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"><defs>${defs}</defs>${tile}${drawMark ? `<g${transform}>${mark}</g>` : ''}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 1024 1024"><title>MediOS</title><defs>${defs}</defs>${tile}${drawMark ? `<g${transform}>${markSvg}</g>` : ''}</svg>`;
 };
