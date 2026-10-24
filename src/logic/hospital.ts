@@ -547,9 +547,11 @@ export const scheduleAppointment = (s: HospitalState, input: ScheduleInput): Tra
   if (active.some((a) => a.patientId === patient.id && a.time === input.time)) {
     return { state: s, result: { ok: false, error: 'PATIENT_BUSY' } };
   }
-  // Tokens are never reused, even after a cancellation.
-  const tokenNo =
-    s.appointments.filter((a) => a.doctorId === doctor.id && a.date === input.date).reduce((m, a) => Math.max(m, a.tokenNo), 0) + 1;
+  // Tokens are never reused, even after a cancellation. Signed in, the server's queue
+  // issues the token when the patient checks in, so a booking has none yet.
+  const tokenNo = s.live
+    ? 0
+    : s.appointments.filter((a) => a.doctorId === doctor.id && a.date === input.date).reduce((m, a) => Math.max(m, a.tokenNo), 0) + 1;
   const appointment: Appointment = {
     id: newId('apt'),
     patientId: patient.id,
@@ -581,11 +583,11 @@ export const scheduleAppointment = (s: HospitalState, input: ScheduleInput): Tra
   }
   next = withNotification(next, {
     title: input.type === 'Follow Up' ? 'Follow-up scheduled' : 'New appointment booked',
-    description: `${patient.name} with ${doctor.name} • ${formatDayMonth(input.date)} ${input.time} • Token ${tokenNo}`,
+    description: `${patient.name} with ${doctor.name} • ${formatDayMonth(input.date)} ${input.time}${tokenNo ? ` • Token ${tokenNo}` : ''}`,
     category: 'Appointments',
     route: '/appointments',
   });
-  next = withAudit(next, `Booked ${input.type} appointment (Token ${tokenNo})`, `${patient.name} → ${doctor.name}`);
+  next = withAudit(next, `Booked ${input.type} appointment${tokenNo ? ` (Token ${tokenNo})` : ''}`, `${patient.name} → ${doctor.name}`);
   return { state: next, result: { ok: true, appointment, invoice } };
 };
 

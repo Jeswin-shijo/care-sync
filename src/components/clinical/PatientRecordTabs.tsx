@@ -27,6 +27,7 @@ import { LabResultCard } from './LabResultCard';
 import { rxSummary } from './rx';
 import { VitalsStrip } from './VitalsStrip';
 import { DetailBlock, TimelineEntry, VisitTimeline } from './VisitTimeline';
+import { tokenSuffix } from '../../utils/tokens';
 
 // -------------------------------------------------------------
 // Shared bits
@@ -230,7 +231,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               {friendlyDate(next.date)} • {next.time}
             </Text>
             <Text style={styles.rowSub} numberOfLines={1}>
-              {next.doctorName} • {next.department} • Token {next.tokenNo}
+              {next.doctorName} • {next.department}
+              {tokenSuffix(next.tokenNo)}
             </Text>
           </View>
           <Badge label={next.status} variant={statusVariant(next.status)} size="sm" />
@@ -403,7 +405,7 @@ export const VisitsTab: React.FC<VisitsTabProps> = ({ visits, appointments, note
       dateISO: a.date,
       time: a.time,
       title: `${a.type === 'Follow Up' ? 'Follow-up' : a.type} appointment • ${a.department}`,
-      subtitle: `${a.doctorName} • Token ${a.tokenNo}${a.reason ? ` • ${a.reason}` : ''}`,
+      subtitle: `${a.doctorName}${tokenSuffix(a.tokenNo)}${a.reason ? ` • ${a.reason}` : ''}`,
       badge: { label: a.status, variant: statusVariant(a.status) },
       icon: 'calendar-outline',
       color: a.status === 'Not Arrived' ? colors.danger : colors.teal,

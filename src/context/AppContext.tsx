@@ -115,6 +115,11 @@ interface AppContextType extends Omit<H.HospitalState, 'selectedPatientId'> {
   registerPatient: (input: H.RegisterPatientInput) => Promise<{ patient: Patient; invoice: Invoice } | null>;
   scheduleAppointment: (input: H.ScheduleInput) => Promise<H.ScheduleResult | null>;
   updateAppointmentStatus: (appointmentId: string, status: Appointment['status']) => Promise<void>;
+  /**
+   * Front-desk check-in: the appointment moves to Waiting. Signed in, the server
+   * issues today's queue token, whose label is returned (null if refused).
+   */
+  checkInAppointment: (appointmentId: string) => Promise<{ label: string; existing: boolean } | null>;
 
   // Clinical
   saveConsultation: (input: H.ConsultationInput) => Promise<ConsultationResult | null>;
@@ -483,6 +488,27 @@ function useHospitalStore({ mode, active, lockedRole, staffName }: StoreOptions)
         }
       },
 
+      checkInAppointment: async (appointmentId: string) => {
+        const apt = stateRef.current.appointments.find((a) => a.id === appointmentId);
+        if (!apt) return null;
+        if (!live) {
+          run((s) => H.updateAppointmentStatus(s, appointmentId, 'Waiting'));
+          return { label: String(apt.tokenNo), existing: false };
+        }
+        try {
+          const { token, existing } = await HospitalApi.checkIn(appointmentId);
+          update((s) => ({
+            ...s,
+            appointments: s.appointments.map((a) => (a.id === appointmentId ? { ...a, status: 'Waiting', tokenNo: token.number } : a)),
+          }));
+          return { label: token.label, existing };
+        } catch (err) {
+          showToast({ type: 'danger', title: 'Not checked in', message: errorMessage(err) });
+          refreshData();
+          return null;
+        }
+      },
+
       // Clinical
       saveConsultation: async (input: H.ConsultationInput) => {
         if (!live) return run((s) => H.saveConsultation(s, input));
@@ -638,7 +664,7 @@ function useHospitalStore({ mode, active, lockedRole, staffName }: StoreOptions)
       findDuplicatePatients: (phone: string, name?: string) => H.findDuplicatePatients(stateRef.current, phone, name),
       askCopilot: (query: string, patientId?: string) => answerStaffQuery(query, stateRef.current, patientId),
     };
-  }, [run, update, persist, showToast, live, lockedRole]);
+  }, [run, update, persist, refreshData, showToast, live, lockedRole]);
 
   const derived = useMemo(() => {
     const todayStats = H.todayStatsFor(state);

@@ -9,6 +9,7 @@ import type {
   Visit,
 } from '../data/mockData';
 import { daysFromToday, formatDayMonth, todayISO } from '../utils/dates';
+import { tokenSuffix } from '../utils/tokens';
 
 // -------------------------------------------------------------
 // Vitals
@@ -263,7 +264,7 @@ export const buildAiAlerts = ({ patients, labSamples, prescriptionReviews, vital
         kind: 'Follow-up due',
         title: a.status === 'Not Arrived' ? 'Follow-up missed today' : `Follow-up ${daysFromToday(a.date) === 0 ? 'today' : 'tomorrow'}`,
         detail: `${a.reason ?? a.department} • ${a.time}${daysFromToday(a.date) ? ` • ${formatDayMonth(a.date)}` : ''}`,
-        source: `Appointments • Token ${a.tokenNo}`,
+        source: `Appointments${tokenSuffix(a.tokenNo)}`,
         route: '/appointments',
       });
     });

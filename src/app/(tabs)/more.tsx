@@ -195,6 +195,14 @@ export default function MoreRoute() {
   const operationsModules: Tile[] = useMemo(
     () => [
       {
+        id: 'queue',
+        title: 'Token Queue',
+        icon: 'ticket',
+        color: '#1E6BFF',
+        bg: '#E8F1FF',
+        open: push('/queue'),
+      },
+      {
         id: 'opd',
         title: 'OPD Consult',
         icon: 'medical',

@@ -25,6 +25,7 @@ import { ProgressRing } from '../components/portals/ProgressRing';
 import { VisitDetailSheet } from '../components/portals/VisitDetailSheet';
 import { minutesOfDay, useNow } from '../components/portals/useNow';
 import { withPreview } from '../components/common/PreviewScope';
+import { tokenText } from '../utils/tokens';
 
 type IconName = keyof typeof Ionicons.glyphMap;
 type DoseStatus = 'Taken' | 'Due now' | 'Upcoming' | 'Missed';
@@ -562,7 +563,7 @@ const VisitCard: React.FC<{ appt: Appointment; onPress: () => void }> = ({ appt,
         </View>
       </View>
       <View style={styles.visitRight}>
-        <Badge label={`Token #${appt.tokenNo}`} variant="primary" size="sm" />
+        {!!tokenText(appt.tokenNo) && <Badge label={`Token ${tokenText(appt.tokenNo)}`} variant="primary" size="sm" />}
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </View>
     </PressableScale>

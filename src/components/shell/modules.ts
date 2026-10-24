@@ -25,6 +25,7 @@ export const MODULE_LABEL: Record<ModuleId, string> = {
   'discharge-summary': 'Discharge Summary',
   'register-patient': 'Patient Registration',
   appointments: 'Appointments',
+  queue: 'Token Queue',
   'help-support': 'Help & Support',
 };
 

@@ -31,6 +31,7 @@ export type ModuleId =
   | 'discharge-summary'
   | 'register-patient'
   | 'appointments'
+  | 'queue'
   | 'help-support';
 
 export const ROLE_LABEL: Record<UserRole, string> = {
@@ -65,6 +66,7 @@ const ROLE_ACCESS: Record<UserRole, ModuleId[] | 'all'> = {
     'discharge-summary',
     'register-patient',
     'appointments',
+    'queue',
     'lab',
     'radiology',
     'pharmacy',
@@ -73,10 +75,10 @@ const ROLE_ACCESS: Record<UserRole, ModuleId[] | 'all'> = {
     'documents',
     'billing',
   ],
-  nurse: [...COMMON, 'nurse-portal', 'bed-management', 'ipd-admission', 'discharge-summary', 'appointments', 'blood-bank', 'inventory', 'documents', 'ambulance'],
+  nurse: [...COMMON, 'nurse-portal', 'bed-management', 'ipd-admission', 'discharge-summary', 'appointments', 'queue', 'blood-bank', 'inventory', 'documents', 'ambulance'],
   lab: [...COMMON, 'lab-portal', 'lab', 'radiology', 'blood-bank', 'inventory', 'documents'],
   pharmacy: [...COMMON, 'pharmacy-review', 'pharmacy', 'inventory', 'billing'],
-  reception: [...COMMON, 'register-patient', 'appointments', 'billing', 'documents'],
+  reception: [...COMMON, 'register-patient', 'appointments', 'queue', 'billing', 'documents'],
   patient: ['patient-portal', 'help-support'],
 };
 
@@ -102,6 +104,8 @@ export const ownerRoleFor = (module: ModuleId): UserRole => {
       return 'pharmacy';
     case 'patient-portal':
       return 'patient';
+    case 'queue':
+      return 'reception';
     case 'doctor-copilot':
     case 'opd-consultation':
     case 'ipd-admission':

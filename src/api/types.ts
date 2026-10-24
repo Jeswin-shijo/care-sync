@@ -219,3 +219,43 @@ export interface ApiSettings {
   hospital?: { name?: string; address?: string; phone?: string; email?: string; tagline?: string; website?: string; gstin?: string; regNo?: string };
   callAgent?: { clinicSessions?: string; slotMinutes?: number; closedDays?: string[] };
 }
+
+// ---------------------------------------------------------------- token queue
+
+export type ApiTokenStatus = 'waiting' | 'called' | 'skipped' | 'completed' | 'cancelled';
+
+/** GET /queue: one patient's place in the day's queue. */
+export interface ApiQueueToken {
+  id: string;
+  date: string;
+  number: number;
+  /** Prefix + number as shown on the display, e.g. "A12". */
+  label: string;
+  status: ApiTokenStatus;
+  uhid: string;
+  patientName: string;
+  appointmentId?: string;
+  appointmentTime: string;
+  priority: boolean;
+  note: string;
+  counter?: string;
+  calledAt?: string;
+  recalls: number;
+  completedAt?: string;
+  createdAt: string;
+  /** Place in line while waiting, else null. */
+  position: number | null;
+}
+
+export interface ApiQueueBoard {
+  date: string;
+  settings: { counters: string[]; tokenPrefix: string; showNamesOnDisplay: boolean; announce: boolean; upcomingOnDisplay: number };
+  tokens: ApiQueueToken[];
+  stats: { issued: number; waiting: number; called: number; skipped: number; completed: number; cancelled: number; averageWaitMinutes: number | null };
+}
+
+/** What a call changed: the room's previous token (completed) and the one now called. */
+export interface ApiQueueCall {
+  called: ApiQueueToken | null;
+  completed: ApiQueueToken | null;
+}

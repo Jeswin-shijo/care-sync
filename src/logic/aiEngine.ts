@@ -620,7 +620,7 @@ export const answerPatientQuery = (query: string, s: HospitalState, patientId: s
         .sort((a, b) => (a.date === b.date ? clockToMinutes(a.time) - clockToMinutes(b.time) : a.date < b.date ? -1 : 1))[0];
       return next
         ? {
-            text: `Your next appointment is ${relativeDayLabel(next.date)} at ${next.time} with ${next.doctorName} (${next.department}). Token #${next.tokenNo}.\n\nPlease arrive 15 minutes early at ${next.department === 'Cardiology' ? 'Room 305, 3rd floor' : 'the 2nd floor OPD, Main Block'}.`,
+            text: `Your next appointment is ${relativeDayLabel(next.date)} at ${next.time} with ${next.doctorName} (${next.department}).${next.tokenNo ? ` Token #${next.tokenNo}.` : ' Your token number is given when you check in.'}\n\nPlease arrive 15 minutes early at ${next.department === 'Cardiology' ? 'Room 305, 3rd floor' : 'the 2nd floor OPD, Main Block'}.`,
             citations: [{ label: 'Your appointments' }],
           }
         : { text: `You have no upcoming appointments, ${first}. Would you like to book one?`, citations: [], actionCard: { type: 'appointment', title: 'Book an Appointment', description: 'Choose doctor, date and time.', actionLabel: 'Book Now', route: '/book-appointment', params: { patientId: patient.id } } };

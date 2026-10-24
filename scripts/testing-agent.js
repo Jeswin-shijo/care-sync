@@ -757,7 +757,7 @@ function run() {
     agent.expect(profile.currentMedications).toEqual(['Tab Amlodipine 5 mg']);
   });
 
-  agent.test('Map 3: Appointments get app statuses, patient ids and per-day tokens in clock order', () => {
+  agent.test('Map 3: Appointments get app statuses, patient ids and their queue tokens (none before check-in)', () => {
     const doctor = M.toDoctor({ profile: { name: 'Dr. Shajin' }, callAgent: { clinicSessions: '09:00-10:00', slotMinutes: 30 } });
     agent.expect(doctor.slots).toEqual(['09:00 AM', '09:30 AM']);
     const list = M.toAppointments(
@@ -767,10 +767,17 @@ function run() {
         { id: 'a3', uhid: 'U1', patientName: 'A', age: 1, gender: 'Male', time: '10:00 AM', date: '2026-09-27', type: 'Consultation', status: 'Checked In' },
       ],
       new Map([['U1', 'p1'], ['U2', 'p2']]),
-      doctor
+      doctor,
+      M.queueNumbers({
+        tokens: [
+          { appointmentId: 'a3', number: 7, status: 'waiting' },
+          { appointmentId: 'a1', number: 3, status: 'cancelled' },
+          { number: 9, status: 'waiting' },
+        ],
+      })
     );
     const by = Object.fromEntries(list.map((a) => [a.id, a]));
-    agent.expect([by.a1.tokenNo, by.a2.tokenNo, by.a3.tokenNo]).toEqual([1, 2, 1]);
+    agent.expect([by.a1.tokenNo, by.a2.tokenNo, by.a3.tokenNo]).toEqual([0, 0, 7]);
     agent.expect([by.a1.status, by.a2.status, by.a3.status]).toEqual(['Not Arrived', 'Confirmed', 'Waiting']);
     agent.expect(by.a2.type).toBe('Follow Up');
     agent.expect(by.a2.patientId).toBe('p1');

@@ -11,6 +11,7 @@ import { BottomSheet } from '../common/BottomSheet';
 import { Button } from '../common/Button';
 import { Avatar } from '../common/Avatar';
 import { Badge, statusVariant } from '../common/Badge';
+import { tokenText } from '../../utils/tokens';
 
 /** The department's own wayfinding point, if the hospital map has one. */
 export const departmentLocation = (department: string) =>
@@ -51,7 +52,7 @@ export const VisitDetailSheet: React.FC<VisitDetailSheetProps> = ({ visible, app
   const rows: Array<{ icon: keyof typeof Ionicons.glyphMap; label: string; value: string }> = a
     ? [
         { icon: 'calendar-outline', label: 'Date & time', value: `${relativeDayLabel(a.date)} • ${a.time} (${formatDisplayDate(a.date)})` },
-        { icon: 'ticket-outline', label: 'Token', value: `#${a.tokenNo}` },
+        { icon: 'ticket-outline', label: 'Token', value: tokenText(a.tokenNo) ?? 'Given at check-in' },
         { icon: 'medkit-outline', label: 'Visit type', value: a.type === 'Follow Up' ? 'Follow-up visit' : a.type },
         ...(a.reason ? [{ icon: 'document-text-outline' as const, label: 'Reason', value: a.reason }] : []),
         { icon: 'location-outline', label: 'Where', value: where },

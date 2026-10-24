@@ -25,6 +25,7 @@ import type {
   ApiMedication,
   ApiPatient,
   ApiPrescription,
+  ApiQueueBoard,
   ApiRole,
   ApiSettings,
   ApiTask,
@@ -161,25 +162,21 @@ export const appointmentTypeFor = (type: string): Appointment['type'] =>
 /** The backend's appointment type for one of the app's. */
 export const apiAppointmentType = (type: Appointment['type']) => (type === 'Follow Up' ? 'Follow-up' : type === 'IPD' ? 'IPD Admission' : 'Consultation');
 
+/** Queue token number by appointment id, for appointments checked in today (cancelled tokens excluded). */
+export const queueNumbers = (board: ApiQueueBoard | null) =>
+  new Map((board?.tokens ?? []).filter((t) => t.appointmentId && t.status !== 'cancelled').map((t) => [t.appointmentId!, t.number]));
+
 /**
- * Appointments with the app's patient ids and tokens. Tokens number each day's
- * queue in clock order; the backend has no token of its own.
+ * Appointments with the app's patient ids. The token is the queue token issued at
+ * check-in (the number on the waiting-room display); 0 until then.
  */
-export const toAppointments = (list: ApiAppointment[], patientIdByUhid: Map<string, string>, doctor: Doctor): Appointment[] => {
-  const minutes = (t: string) => {
-    const m = /(\d{1,2}):(\d{2})\s*([AP]M)/i.exec(t);
-    return m ? ((Number(m[1]) % 12) + (m[3].toUpperCase() === 'PM' ? 12 : 0)) * 60 + Number(m[2]) : 0;
-  };
-  const perDay = new Map<string, number>();
-  const tokens = new Map<string, number>();
-  [...list]
-    .sort((a, b) => a.date.localeCompare(b.date) || minutes(a.time) - minutes(b.time))
-    .forEach((a) => {
-      const n = (perDay.get(a.date) ?? 0) + 1;
-      perDay.set(a.date, n);
-      tokens.set(a.id, n);
-    });
-  return list.map((a) => ({
+export const toAppointments = (
+  list: ApiAppointment[],
+  patientIdByUhid: Map<string, string>,
+  doctor: Doctor,
+  queued: Map<string, number> = new Map()
+): Appointment[] =>
+  list.map((a) => ({
     id: a.id,
     patientId: patientIdByUhid.get(a.uhid) ?? '',
     patientName: a.patientName,
@@ -190,11 +187,10 @@ export const toAppointments = (list: ApiAppointment[], patientIdByUhid: Map<stri
     time: a.time,
     date: a.date,
     status: APPOINTMENT_STATUS[a.status] ?? 'Confirmed',
-    tokenNo: tokens.get(a.id) ?? 0,
+    tokenNo: queued.get(a.id) ?? 0,
     reason: a.condition || undefined,
     confirmation: a.confirmation,
   }));
-};
 
 // ---------------------------------------------------------------- visits, notes, vitals
 

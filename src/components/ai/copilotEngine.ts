@@ -13,6 +13,7 @@ import type {
 import type { AiCitation } from '../../logic/hospital';
 import { formatParamValue, parameterFlag, vitalsFlags, type LabTrend } from '../../logic/clinical';
 import { clockToMinutes, daysFromToday, formatDayMonth, relativeDayLabel, todayISO, clinicNow } from '../../utils/dates';
+import { tokenSuffix } from '../../utils/tokens';
 
 /**
  * Doctor Copilot "reasoning" (simulated, deterministic). Everything here is a
@@ -241,7 +242,7 @@ export const todaysPatientsFor = (
       rows.set(p.id, {
         patient: p,
         chip,
-        meta: `${a.time} • ${a.type === 'Follow Up' ? 'Follow-up' : a.type} • Token ${a.tokenNo}`,
+        meta: `${a.time} • ${a.type === 'Follow Up' ? 'Follow-up' : a.type}${tokenSuffix(a.tokenNo)}`,
         reason: reports ?? a.reason ?? a.department,
         defaultTab: chip === 'Reports' ? 'Reports' : 'Summarize',
         sortKey: clockToMinutes(a.time),
@@ -690,7 +691,7 @@ export const buildInsights = (ctx: PatientContext): Insight[] => {
       title: 'Follow-up missed today',
       evidence: `${missed.reason ?? missed.department} • ${missed.time} with ${missed.doctorName} — patient has not arrived.`,
       steps: ['Call the patient and reschedule', 'Keep pending orders active'],
-      citations: [{ label: `Appointments • Token ${missed.tokenNo}`, detail: missed.time }],
+      citations: [{ label: `Appointments${tokenSuffix(missed.tokenNo)}`, detail: missed.time }],
       action: { kind: 'call', phone: patient.phone, label: 'Call patient' },
       planLine: 'Did not attend follow-up — contacted to reschedule.',
     });

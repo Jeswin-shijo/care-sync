@@ -35,6 +35,7 @@ import {
   weekdayShort,
 } from '../utils/dates';
 import { useLiveRefreshControl } from '../components/common/useLiveRefresh';
+import { tokenSuffix, tokenText } from '../utils/tokens';
 
 type TypeTab = 'All' | Appointment['type'];
 const TYPE_TABS: TypeTab[] = ['All', 'OPD', 'IPD', 'Follow Up'];
@@ -142,7 +143,7 @@ const patientActionsFor = (apt: Appointment, dayOffset: number): SheetAction[] =
 
 export default function AppointmentsRoute() {
   const params = useLocalSearchParams<{ date?: string }>();
-  const { appointments: allAppointments, patients, updateAppointmentStatus, activeRole, patientAppUserId } = useApp();
+  const { appointments: allAppointments, patients, updateAppointmentStatus, checkInAppointment, activeRole, patientAppUserId, dataMode } = useApp();
   const liveRefresh = useLiveRefreshControl();
   // Patient app: only the signed-in patient's own visits, never the hospital schedule.
   const patientView = activeRole === 'patient';
@@ -293,9 +294,16 @@ export default function AppointmentsRoute() {
     };
     switch (key) {
       case 'checkin':
-        updateAppointmentStatus(apt.id, 'Waiting');
         closeSheet();
-        showToast({ title: 'Checked in', message: `${first} is in the waiting queue • Token #${apt.tokenNo}`, action: undo });
+        checkInAppointment(apt.id).then((token) => {
+          if (!token) return;
+          showToast({
+            title: token.existing ? 'Already checked in' : 'Checked in',
+            message: `${first} is in the waiting queue • Token ${token.label}`,
+            // Signed in, the token lives on the server; it is withdrawn from the Token Queue screen.
+            action: dataMode === 'live' ? { label: 'Queue', onPress: () => router.push('/queue') } : undo,
+          });
+        });
         break;
       case 'start':
         updateAppointmentStatus(apt.id, 'In Consultation');
@@ -464,7 +472,7 @@ export default function AppointmentsRoute() {
         >
           <View style={styles.timeCol}>
             <Text style={[styles.time, apt.status === 'Cancelled' && styles.struck]}>{apt.time}</Text>
-            <Text style={styles.token}>#{apt.tokenNo}</Text>
+            {!!tokenText(apt.tokenNo) && <Text style={styles.token}>{tokenText(apt.tokenNo)}</Text>}
           </View>
           <Avatar name={apt.patientName} size={42} />
           <View style={styles.info}>
@@ -510,6 +518,7 @@ export default function AppointmentsRoute() {
                 <Text style={styles.todayBtnText}>Today</Text>
               </TouchableOpacity>
             )}
+            {!patientView && dataMode === 'live' && <HeaderIconButton icon="ticket-outline" onPress={() => router.push('/queue')} accessibilityLabel="Token queue" />}
             <HeaderIconButton icon="calendar-outline" onPress={() => setCalendarVisible(true)} accessibilityLabel="Jump to a date" />
           </HeaderActions>
         }
@@ -549,7 +558,7 @@ export default function AppointmentsRoute() {
         visible={sheetVisible && !!sheetApt}
         onClose={closeSheet}
         title={confirmCancel ? 'Cancel appointment?' : sheetApt?.patientName}
-        subtitle={sheetApt ? `${dayTitle(sheetApt.date)} • ${sheetApt.time} • Token #${sheetApt.tokenNo}` : undefined}
+        subtitle={sheetApt ? `${dayTitle(sheetApt.date)} • ${sheetApt.time}${tokenSuffix(sheetApt.tokenNo)}` : undefined}
         footer={
           confirmCancel ? (
             <View style={styles.confirmRow}>

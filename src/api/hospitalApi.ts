@@ -15,6 +15,7 @@ import type {
 import type { HospitalProfile, ServerIds } from '../logic/hospital';
 import { formatClock, formatDisplayDate } from '../utils/dates';
 import { api } from './client';
+import { queueApi } from './queueApi';
 import * as M from './mappers';
 import type {
   ApiAppointment,
@@ -26,6 +27,7 @@ import type {
   ApiMedication,
   ApiPatient,
   ApiPrescription,
+  ApiQueueBoard,
   ApiSettings,
   ApiTask,
   ApiVitals,
@@ -69,7 +71,7 @@ async function inBatches<T, R>(items: T[], limit: number, fn: (item: T) => Promi
 const enc = encodeURIComponent;
 
 export async function loadHospital(): Promise<LiveSnapshot> {
-  const [settings, patientPage, appointmentPage, bills, medications, labReports, imaging, documents, tasks] = await Promise.all([
+  const [settings, patientPage, appointmentPage, bills, medications, labReports, imaging, documents, tasks, queue] = await Promise.all([
     api<ApiSettings>('/settings'),
     api<{ patients: ApiPatient[] }>('/patients', { query: { limit: 500 } }),
     api<{ appointments: ApiAppointment[] }>('/appointments', { query: { limit: 500 } }),
@@ -79,6 +81,8 @@ export async function loadHospital(): Promise<LiveSnapshot> {
     api<ApiImaging[]>('/imaging'),
     api<ApiDocument[]>('/documents'),
     api<ApiTask[]>('/tasks-alerts'),
+    // An older server has no queue; appointments then keep their schedule-order tokens.
+    api<ApiQueueBoard>('/queue').catch(() => null),
   ]);
   const apiPatients = patientPage.patients;
 
@@ -116,7 +120,7 @@ export async function loadHospital(): Promise<LiveSnapshot> {
     patients,
     clinicalProfiles: profiles,
     doctors: [doctor],
-    appointments: M.toAppointments(appointmentPage.appointments, idByUhid, doctor),
+    appointments: M.toAppointments(appointmentPage.appointments, idByUhid, doctor, M.queueNumbers(queue)),
     invoices: bills.map((b) => M.toInvoice(b, idByUhid.get(b.uhid) ?? '')),
     visits,
     clinicalNotes,
@@ -256,6 +260,9 @@ export async function saveAppointment(appointment: Appointment, patient: Patient
   const bills = bill ? [await saveBill(bill, patient.uhid)] : [];
   return merge({ ids: { apt: [created.id] } }, billIds(bills));
 }
+
+/** Check-in at the front desk: gives the patient today's queue token and marks the appointment Checked In. */
+export const checkIn = (appointmentId: string) => queueApi.issue({ appointmentId });
 
 export const setAppointmentStatus = (id: string, status: Appointment['status']) =>
   api<ApiAppointment>(`/appointments/${enc(id)}/status`, { method: 'PATCH', body: { status: M.apiAppointmentStatus(status) } });

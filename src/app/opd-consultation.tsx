@@ -295,9 +295,9 @@ function OpdConsultationScreen() {
         } else {
           bullets.push('• No medicines prescribed');
         }
-        if (linkedAppointment) bullets.push(`• Token ${linkedAppointment.tokenNo} (${linkedAppointment.time}) marked Completed`);
+        if (linkedAppointment) bullets.push(`• ${linkedAppointment.tokenNo ? `Token ${linkedAppointment.tokenNo}` : 'Appointment'} (${linkedAppointment.time}) marked Completed`);
         if (res.followUp) {
-          bullets.push(`• Follow-up booked: ${friendlyDate(res.followUp.date)} at ${res.followUp.time} (Token ${res.followUp.tokenNo})`);
+          bullets.push(`• Follow-up booked: ${friendlyDate(res.followUp.date)} at ${res.followUp.time}${res.followUp.tokenNo ? ` (Token ${res.followUp.tokenNo})` : ''}`);
         } else if (followUpPlan) {
           bullets.push('• Follow-up not booked — no free slot; book it from Appointments');
         }
@@ -371,7 +371,7 @@ function OpdConsultationScreen() {
     <>
       <Header
         title="OPD Consultation"
-        subtitle={linkedAppointment ? `Token ${linkedAppointment.tokenNo} • ${linkedAppointment.time}` : patient ? 'Walk-in visit' : undefined}
+        subtitle={linkedAppointment ? `${linkedAppointment.tokenNo ? `Token ${linkedAppointment.tokenNo} • ` : ''}${linkedAppointment.time}` : patient ? 'Walk-in visit' : undefined}
         onBackPress={requestLeave}
       />
       <AccessGate module="opd-consultation" purpose="Recording OPD consultations">
@@ -422,10 +422,12 @@ function OpdConsultationScreen() {
                 <AllergyBanner allergies={profile?.allergies} />
                 {linkedAppointment ? (
                   <View style={styles.aptCard}>
-                    <View style={styles.token}>
-                      <Text style={styles.tokenLabel}>TOKEN</Text>
-                      <Text style={styles.tokenValue}>{linkedAppointment.tokenNo}</Text>
-                    </View>
+                    {linkedAppointment.tokenNo > 0 && (
+                      <View style={styles.token}>
+                        <Text style={styles.tokenLabel}>TOKEN</Text>
+                        <Text style={styles.tokenValue}>{linkedAppointment.tokenNo}</Text>
+                      </View>
+                    )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.aptTitle}>
                         {linkedAppointment.time} • {linkedAppointment.type === 'Follow Up' ? 'Follow-up' : linkedAppointment.type}

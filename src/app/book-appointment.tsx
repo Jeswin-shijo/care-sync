@@ -27,6 +27,7 @@ import { RoleLockScreen } from '../components/orders/RoleLock';
 import { canAccess } from '../logic/access';
 import { formatCurrency } from '../utils/formatters';
 import { daysFromToday, formatDisplayDate, fromISODate, isoDaysFromToday, relativeDayLabel, weekdayShort } from '../utils/dates';
+import { tokenText } from '../utils/tokens';
 
 type VisitType = 'OPD' | 'Follow Up';
 
@@ -502,7 +503,7 @@ export default function BookAppointmentRoute() {
           <OrderSuccessCard
             title={booked.appointment.type === 'Follow Up' ? 'Follow-up Booked' : 'Appointment Booked'}
             subtitle={`${booked.appointment.patientName} with ${booked.appointment.doctorName}`}
-            highlight={{ label: 'Token number', value: `#${booked.appointment.tokenNo}` }}
+            highlight={{ label: 'Token number', value: tokenText(booked.appointment.tokenNo) ?? 'Given at check-in' }}
           >
             <DetailRow icon="calendar-outline" label="Date" value={`${relativeDayLabel(booked.appointment.date)} • ${formatDisplayDate(booked.appointment.date)}`} />
             <DetailRow icon="time-outline" label="Time" value={booked.appointment.time} />
@@ -588,8 +589,8 @@ export default function BookAppointmentRoute() {
               <View style={styles.infoNote}>
                 <Ionicons name="information-circle-outline" size={16} color={colors.infoText} />
                 <Text style={styles.infoNoteText}>
-                  Already booked with {sheetDoctor.name} {relativeDayLabel(existingWithDoctor.date)} at {existingWithDoctor.time} (Token #
-                  {existingWithDoctor.tokenNo}).
+                  Already booked with {sheetDoctor.name} {relativeDayLabel(existingWithDoctor.date)} at {existingWithDoctor.time}
+                  {tokenText(existingWithDoctor.tokenNo) ? ` (Token ${tokenText(existingWithDoctor.tokenNo)})` : ''}.
                 </Text>
               </View>
             )}

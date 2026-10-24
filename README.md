@@ -74,6 +74,7 @@ Rules of thumb:
 - **Home:** dashboard (live KPIs, quick actions, MediOS AI alerts, upcoming appointments), Patients, Billing, AI Assistant, More.
 - **Clinical:** patient record (overview, history, visits, reports), 4-step registration, OPD consultation with live drug-safety checks, IPD admission with bed allocation, discharge summary with approve & discharge.
 - **Scheduling & orders:** appointments (day strip, status actions), booking with real slots, pharmacy counter cart, lab and radiology orders.
+- **Token queue** (signed in): check-in from Appointments issues the day's queue token, the number the waiting-room display shows. The Token Queue screen calls the next patient to your room, announces again, marks no-shows and puts them back. The offline demo has no shared queue.
 - **Finance:** billing & invoices, receipts (paid/due, PDF/share/print), create invoice, receipt templates & previews, financial management, reports & report detail.
 - **Role portals:** Doctor Copilot, Nurse (beds, tasks, vitals), Lab (sample pipeline, result entry, AI summary), Pharmacy review (safety checks, alternatives, overrides), Patient app (+ patient assistant, my reports, hospital navigation), Admin portal (overview, audit trail).
 - **Operations:** blood bank, ambulance fleet, bed management, inventory, document support, settings, notifications, help & support.

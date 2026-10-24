@@ -45,6 +45,7 @@ const APP_ROUTES = [
   'patient/[id]',
   'pharmacy',
   'pharmacy-review',
+  'queue',
   'radiology',
   'receipt-templates',
   'receipt/[id]',
